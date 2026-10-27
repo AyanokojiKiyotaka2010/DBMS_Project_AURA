@@ -1,0 +1,130 @@
+{
+  "theme_name": "Neo-Collegiate Daylight",
+  "description": "A warm, daylight-focused editorial design system. Avoids corporate SaaS and dark AI-slop aesthetics by using tactile paper textures, rich academic typography, and organic colors. Designed to feel energetic yet structured for university students.",
+  "mode": "light",
+  "typography": {
+    "headings": {
+      "family": "Cormorant Garamond",
+      "weights": ["400", "600", "700"],
+      "usage": "H1-H3, hero sections, announcement titles. Use tracking-tight."
+    },
+    "body": {
+      "family": "Outfit",
+      "weights": ["300", "400", "500", "600"],
+      "usage": "Main UI, queries, general text. Highly legible sans."
+    },
+    "mono": {
+      "family": "JetBrains Mono",
+      "weights": ["400", "500"],
+      "usage": "Encrypted Author IDs, timestamps, small metadata."
+    }
+  },
+  "colors": {
+    "archetype": "Organic & Earthy + Vibrant Play",
+    "background": {
+      "main": "#F9F8F6",
+      "card": "#FFFFFF",
+      "sidebar": "#F4F2EC"
+    },
+    "text": {
+      "primary": "#2D2B2A",
+      "secondary": "#5C5856",
+      "muted": "#8A8581"
+    },
+    "brand": {
+      "primary": "#D95D39",
+      "primary_hover": "#BF4E2D",
+      "secondary": "#2A4747",
+      "accent": "#E8B255"
+    },
+    "roles": {
+      "cr": {"bg": "#FEEBC8", "text": "#C05621", "border": "#FBD38D"},
+      "dcr": {"bg": "#FEFCBF", "text": "#975A16", "border": "#FAF089"},
+      "professor": {"bg": "#C6F6D5", "text": "#22543D", "border": "#9AE6B4"},
+      "alumni": {"bg": "#E9D8FD", "text": "#44337A", "border": "#D6BCFA"},
+      "student": {"bg": "#E2E8F0", "text": "#2D3748", "border": "#CBD5E0"},
+      "encrypted": {"bg": "#EDF2F7", "text": "#4A5568", "border": "#A0AEC0"}
+    },
+    "border": {
+      "light": "#EAE5D9",
+      "default": "#D1CCC0",
+      "dark": "#A39E93"
+    }
+  },
+  "visual_enhancers": {
+    "textures": "Apply a subtle SVG noise/grain filter over the main background to give a tactile paper feel.",
+    "shadows": "Ambient clay-like shadows. shadow-[0_4px_20px_-4px_rgba(42,71,71,0.08)]. Inner 1px border on cards to separate from background.",
+    "borders": "Cards and sidebar use 1px solid border-default to ground the design (Swiss/Editorial feel)."
+  },
+  "components": {
+    "sidebar": "Fixed left, distinct background (#F4F2EC). Grouped links (Announcements, Queries, Clubs, Complaints, Admin) with @phosphor-icons/react icons.",
+    "announcement_feed": "Magazine-style layout. Large serif titles, crisp date borders. Composer locked to CR/DCR.",
+    "attendance_tracker": "Bento-style grid of subject cards. Include SVG percentage rings. Use primary brand color for high attendance, warning colors for low.",
+    "query_cards": "Tactile card styling. Header includes 'Encrypted ID' chip (mono font) and escalation status timeline (48h -> Senior -> Alumni -> Archived).",
+    "club_grid": "Image-heavy bento grid. Each club card features a photo from the image list, club name in serif, and a pill for cell type. 'Past 5-year archives' shown as a sub-nav timeline.",
+    "role_badges": "Pill-shaped (rounded-full), highly legible text, 1px border. Uses colors defined in 'roles'.",
+    "auth_pages": "Split screen. Left: warm daylight campus image, right: login/register form with Shadcn selects for Department & Year."
+  },
+  "grids_layouts": {
+    "dashboard_grid": "grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6. Use for Attendance Tracker and Club Overviews.",
+    "feed_layout": "Max width 3xl for readability, centered within its container (optical alignment), padded generously (p-8).",
+    "spacing": "Generous spacing. p-6 or p-8 inside cards. gap-8 between major sections."
+  },
+  "motion": {
+    "cards": "hover:-translate-y-1 hover:shadow-lg transition-all duration-300 ease-out",
+    "buttons": "Active scale down (active:scale-95).",
+    "stagger": "List items (queries, announcements) stagger entrance via framer-motion."
+  },
+  "accessibility": {
+    "contrast": "Ensure all text, especially within colored role badges and encrypted chips, meets APCA/WCAG AA contrast. Use charcoal text instead of white on lighter brand colors.",
+    "testing": "All interactive elements (tabs, forms, buttons, cards) MUST include data-testid attributes (e.g., data-testid='login-submit-button', data-testid='announcement-composer').",
+    "focus": "focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+  },
+  "images": {
+    "hero_login": {
+      "url": "https://images.unsplash.com/photo-1758270704763-22072a90d3b6?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1MDV8MHwxfHNlYXJjaHwxfHxkaXZlcnNlJTIwY29sbGVnZSUyMHN0dWRlbnRzJTIwc3R1ZHlpbmclMjBjYW1wdXMlMjB3YXJtJTIwbGlnaHR8ZW58MHx8fHwxNzg2MDUyMzU2fDA&ixlib=rb-4.1.0&q=85",
+      "description": "Students talking and laughing in a lecture hall. Ideal for login page or hero section.",
+      "category": "auth_hero"
+    },
+    "club_news_announcements": {
+      "url": "https://images.unsplash.com/photo-1760594386931-12fa82b68e59?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA3MDR8MHwxfHNlYXJjaHw0fHx1bml2ZXJzaXR5JTIwY2x1YiUyMG1lZXRpbmclMjBldmVudCUyMHBvc3RlciUyMHN0eWxlfGVufDB8fHx8MTc4NjA1MjM1Nnww&ixlib=rb-4.1.0&q=85",
+      "description": "Club news sign with poster above snacks and lamp. Great for announcement headers or club dashboard.",
+      "category": "dashboard_header"
+    },
+    "archive_tactile": {
+      "url": "https://images.unsplash.com/photo-1765375382570-d87a9bc70c25?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA3MDR8MHwxfHNlYXJjaHwyfHx1bml2ZXJzaXR5JTIwY2x1YiUyMG1lZXRpbmclMjBldmVudCUyMHBvc3RlciUyMHN0eWxlfGVufDB8fHx8MTc4NjA1MjM1Nnww&ixlib=rb-4.1.0&q=85",
+      "description": "Newspapers laid out on a wooden table. Perfect for representing the 'Past 5-year event archives' visually.",
+      "category": "club_archives"
+    },
+    "club_group": {
+      "url": "https://images.unsplash.com/photo-1638570024522-a95b3dbbf2c6?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA3MDR8MHwxfHNlYXJjaHwxfHx1bml2ZXJzaXR5JTIwY2x1YiUyMG1lZXRpbmclMjBldmVudCUyMHBvc3RlciUyMHN0eWxlfGVufDB8fHx8MTc4NjA1MjM1Nnww&ixlib=rb-4.1.0&q=85",
+      "description": "A group of people standing in front of a building. Use for club cover photos.",
+      "category": "club_cover"
+    }
+  },
+  "libraries": {
+    "icons": "yarn add @phosphor-icons/react",
+    "animation": "yarn add framer-motion",
+    "charts": "recharts (for attendance rings/dashboard stats)",
+    "notifications": "yarn add sonner"
+  },
+  "instructions_to_main_agent": [
+    "PHASE 1: Setup the layout frame. Create a responsive Left Sidebar + Top Header (mobile) + Main Content Area. Main bg should be #F9F8F6.",
+    "PHASE 2: Build typography base in Tailwind config. Import Cormorant Garamond, Outfit, and JetBrains Mono from Google Fonts.",
+    "PHASE 3: Develop the Core Components (RoleBadge, EncryptedIDChip, TactileCard). Ensure TactileCard has the 1px inner border and clay-like shadow.",
+    "PHASE 4: Construct the Dashboard Views. Implement the Attendance Rings (Bento Grid), the Magazine-style Announcement Feed (CR/DCR gated visually), and the Q&A Query Cards with the escalation timeline.",
+    "PHASE 5: Build the Auth Pages with the split layout using the provided auth_hero image.",
+    "PHASE 6: Integrate sonner for toasts and framer-motion for simple micro-interactions on the Query Cards and Club Grid."
+  ],
+  "UNIVERSAL_GUIDELINES_FOR_MAIN_AGENT": [
+    "NEVER use generic centered layouts or simplistic dark-slate/indigo gradients (AI slop).",
+    "Always use the defined tactile paper colors and editorial fonts. DO NOT fallback to Inter or Roboto for headings.",
+    "Create depth through 1px borders, subtle layered shadows, and noise textures. DO NOT rely on solid dark gray lines.",
+    "DO NOT use a completely transparent background for headers, sidebars, or dropdowns. Always use solid #F4F2EC or glassmorphism (bg-white/80 backdrop-blur).",
+    "All interactive elements MUST have micro-animations (hover states, focus rings).",
+    "You MUST include data-testid attributes on all form fields, buttons, links, and major content cards.",
+    "Implement the 'Encrypted ID' visual using JetBrains Mono, a lock icon, and a subtle blurred or dotted background.",
+    "Do NOT use HTML-based generic alerts. Use 'sonner' for all notifications.",
+    "Use @phosphor-icons/react for all iconography to match the academic/editorial aesthetic."
+  ]
+}

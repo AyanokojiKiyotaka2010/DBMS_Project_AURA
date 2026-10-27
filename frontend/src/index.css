@@ -1,0 +1,212 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   AURA — Neo-Collegiate Daylight
+   Warm editorial daylight theme.
+   ============================================================ */
+
+:root {
+    --paper: #f9f8f6;
+    --paper-card: #ffffff;
+    --paper-sidebar: #f4f2ec;
+    --ink: #2d2b2a;
+    --ink-2: #5c5856;
+    --ink-3: #8a8581;
+    --edge-light: #eae5d9;
+    --edge: #d1ccc0;
+    --edge-dark: #a39e93;
+    --brand: #d95d39;
+    --brand-hover: #bf4e2d;
+    --brand-2: #2a4747;
+    --brand-3: #e8b255;
+}
+
+body {
+    margin: 0;
+    font-family:
+        "Outfit",
+        ui-sans-serif,
+        system-ui,
+        -apple-system,
+        BlinkMacSystemFont,
+        sans-serif;
+    color: var(--ink);
+    background-color: var(--paper);
+    background-image:
+        radial-gradient(
+            circle at 20% 10%,
+            rgba(232, 178, 85, 0.06),
+            transparent 50%
+        ),
+        radial-gradient(
+            circle at 80% 100%,
+            rgba(42, 71, 71, 0.05),
+            transparent 55%
+        ),
+        url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.18 0 0 0 0 0.17 0 0 0 0 0.16 0 0 0 0.05 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    background-attachment: fixed;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+code,
+.font-mono {
+    font-family:
+        "JetBrains Mono", ui-monospace, "Courier New", monospace;
+}
+
+.font-serif {
+    font-family: "Cormorant Garamond", "Iowan Old Style", Georgia, serif;
+    font-feature-settings: "liga", "dlig", "ss01";
+}
+
+/* Shadcn tokens rewritten in warm daylight */
+@layer base {
+    :root {
+        --background: 42 25% 97%;
+        --foreground: 20 5% 17%;
+        --card: 0 0% 100%;
+        --card-foreground: 20 5% 17%;
+        --popover: 0 0% 100%;
+        --popover-foreground: 20 5% 17%;
+        --primary: 14 68% 54%;
+        --primary-foreground: 42 25% 97%;
+        --secondary: 180 27% 22%;
+        --secondary-foreground: 42 25% 97%;
+        --muted: 38 20% 92%;
+        --muted-foreground: 20 6% 40%;
+        --accent: 38 76% 62%;
+        --accent-foreground: 20 5% 17%;
+        --destructive: 0 70% 50%;
+        --destructive-foreground: 42 25% 97%;
+        --border: 38 20% 86%;
+        --input: 38 20% 86%;
+        --ring: 14 68% 54%;
+        --radius: 0.9rem;
+    }
+    * {
+        @apply border-border;
+    }
+    body {
+        @apply bg-background text-foreground;
+    }
+    ::selection {
+        background: #d95d39;
+        color: #f9f8f6;
+    }
+}
+
+/* Tactile card utility */
+.tactile-card {
+    background: var(--paper-card);
+    border: 1px solid var(--edge-light);
+    border-radius: 1.25rem;
+    box-shadow:
+        0 4px 20px -8px rgba(42, 71, 71, 0.09),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.6);
+    transition:
+        transform 0.3s ease-out,
+        box-shadow 0.3s ease-out;
+}
+.tactile-card:hover {
+    transform: translateY(-2px);
+    box-shadow:
+        0 10px 30px -10px rgba(42, 71, 71, 0.16),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.7);
+}
+
+.paper-grain::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.35;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.18 0 0 0 0 0.17 0 0 0 0 0.16 0 0 0 0.08 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    mix-blend-mode: multiply;
+    border-radius: inherit;
+}
+
+/* Focus ring */
+*:focus-visible {
+    outline: 2px solid #d95d39;
+    outline-offset: 2px;
+    border-radius: 6px;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background: #d1ccc0;
+    border-radius: 8px;
+    border: 2px solid #f9f8f6;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #a39e93;
+}
+
+/* Encrypted ID chip animation */
+@keyframes shimmer {
+    0% {
+        background-position: -200% 0;
+    }
+    100% {
+        background-position: 200% 0;
+    }
+}
+.encrypted-chip {
+    background: linear-gradient(
+        90deg,
+        #edf2f7 0%,
+        #ffffff 50%,
+        #edf2f7 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 4s ease-in-out infinite;
+}
+
+/* Stagger fade-in */
+@keyframes fadeUp {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+.animate-fade-up {
+    animation: fadeUp 0.5s ease-out both;
+}
+
+/* Debug wrapper contract (kept from CRA baseline) */
+@layer base {
+    [data-debug-wrapper="true"] {
+        display: contents !important;
+    }
+    [data-debug-wrapper="true"] > * {
+        margin-left: inherit;
+        margin-right: inherit;
+        margin-top: inherit;
+        margin-bottom: inherit;
+        padding-left: inherit;
+        padding-right: inherit;
+        padding-top: inherit;
+        padding-bottom: inherit;
+        column-gap: inherit;
+        row-gap: inherit;
+        gap: inherit;
+        border-left-width: inherit;
+        border-right-width: inherit;
+        border-top-width: inherit;
+        border-bottom-width: inherit;
+    }
+}
