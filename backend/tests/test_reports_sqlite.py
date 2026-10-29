@@ -242,6 +242,37 @@ def test_attendance_below():
             pass
 
 
+def test_imported_grade_only_results_and_official_cgpa():
+    """Grade-only rows (no marks) + the sheet's cumulative CGPA, as produced by importer.loader."""
+    import types
+    from importer.loader import load
+    c = sqlite_db.install(db)
+    sheet = {"kind": "regular", "branch": "COMPUTER SCIENCE AND ENGINEERING", "semester_name": "SECOND",
+             "courses": {"CS102 T": 4.0, "CS102 P": 1.0}, "course_names": {"CS102 T": "Data Structures", "CS102 P": "Data Structures"},
+             "students": [
+                 {"admission_no": "U25CS001", "name": "ASHA ROY", "semester": 2, "grades": {"CS102 T": "AA", "CS102 P": "BB"},
+                  "credits": {}, "reg_credit": 5.0, "earned_credit": 5.0, "sgpa": 9.6, "cgpa": 8.5, "backlog_credits": 0},
+                 {"admission_no": "U25CS002", "name": "BALA K", "semester": 2, "grades": {"CS102 T": "FF", "CS102 P": "XX"},
+                  "credits": {}, "reg_credit": 5.0, "earned_credit": 0.0, "sgpa": 0.0, "cgpa": 4.0, "backlog_credits": 5}]}
+    grad = dict(sheet, students=[{**sheet["students"][0], "admission_no": "U21CS009", "name": "OLD GRAD"}])
+    st = run(load([(1, sheet), (4, grad)], log=lambda *a: None))
+    assert st["users_new"] == 3 and st["alumni"] == 1 and st["results_new"] == 6
+    assert run(load([(1, sheet), (4, grad)], log=lambda *a: None))["results_new"] == 0          # idempotent
+    # year shift: 1st-year cohort is now 2nd year; the 4th-year cohort graduated
+    yr = {r["roll_no"]: (r["role"], r["label"]) for r in c.all(
+        "SELECT u.roll_no, u.role, y.label FROM users u LEFT JOIN academic_years y ON y.id=u.year_id")}
+    assert yr["U25CS001"] == ("Student", "2nd Year") and yr["U21CS009"] == ("Alumni", None)
+    admin = {"role": "Administrator", "department_id": None}
+    r = run(rs.cgpa_report(admin, {"group_by": "student"}))
+    assert {s["name"]: s["cgpa"] for s in r["rows"]} == {"Asha Roy": 8.5, "Bala K": 4.0}        # official cumulative CGPA
+    r = run(rs.cgpa_report(admin, {"group_by": "student", "semester": 2}))
+    assert {s["name"]: s["cgpa"] for s in r["rows"]}["Asha Roy"] == 9.6                          # SGPA recomputed from grades
+    bl = run(rs.backlog_report(admin, {}))
+    assert [s["name"] for s in bl["rows"]] == ["Bala K"] and "FF" in bl["rows"][0]["courses"]
+    ca = run(rs.course_average_report(admin, {"semester": 2}))
+    assert ca["rows"][0]["avg_marks"] is None and ca["rows"][0]["avg_grade_point"] is not None
+
+
 if __name__ == "__main__":
     n = 0
     for name, fn in sorted(globals().items()):

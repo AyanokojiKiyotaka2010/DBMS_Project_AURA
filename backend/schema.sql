@@ -73,7 +73,7 @@ CREATE TABLE IF NOT EXISTS courses (
   year_id       INT NOT NULL,
   semester      TINYINT NOT NULL,
   professor_id  INT NULL,
-  UNIQUE (code),
+  CONSTRAINT uq_course_code_dept UNIQUE (code, department_id),
   INDEX ix_courses_sem (department_id, year_id, semester),
   FOREIGN KEY (department_id) REFERENCES departments(id)    ON DELETE CASCADE,
   FOREIGN KEY (year_id)       REFERENCES academic_years(id) ON DELETE CASCADE,
@@ -89,20 +89,33 @@ CREATE TABLE IF NOT EXISTS enrollments (
   FOREIGN KEY (course_id)  REFERENCES courses(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- One result per enrolment. grade_point / letter / status are derived from
--- marks_obtained and courses.max_marks by the application (see grading.py).
+-- One result per enrolment. Either entered as marks (grade derived by grading.py) or imported
+-- grade-only from official result sheets (marks_obtained / percentage are then NULL).
 CREATE TABLE IF NOT EXISTS results (
   enrollment_id  INT PRIMARY KEY,
-  marks_obtained DECIMAL(6,2) NOT NULL,
-  percentage     DECIMAL(5,2) NOT NULL,
+  marks_obtained DECIMAL(6,2) NULL,
+  percentage     DECIMAL(5,2) NULL,
   grade_point    DECIMAL(3,1) NOT NULL,
-  grade_letter   VARCHAR(3)   NOT NULL,
+  grade_letter   VARCHAR(3)   NOT NULL,            -- AA..FF, or II / NA / XX (not passed)
   status         VARCHAR(4)   NOT NULL,            -- 'PASS' | 'FAIL'  (FAIL == backlog)
   updated_by     INT NULL,
   updated_at     DATETIME NOT NULL,
   INDEX ix_results_status (status),
   FOREIGN KEY (enrollment_id) REFERENCES enrollments(id) ON DELETE CASCADE,
   FOREIGN KEY (updated_by)    REFERENCES users(id)       ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Official per-semester summary printed on the result sheet (CGPA is cumulative over ALL
+-- semesters, which individual course rows alone cannot reproduce).
+CREATE TABLE IF NOT EXISTS semester_results (
+  student_id     INT NOT NULL,
+  semester       TINYINT NOT NULL,
+  sgpa           DECIMAL(4,2) NOT NULL,
+  cgpa           DECIMAL(4,2) NOT NULL,
+  registered_credits DECIMAL(5,1) NOT NULL DEFAULT 0,
+  earned_credits     DECIMAL(5,1) NOT NULL DEFAULT 0,
+  PRIMARY KEY (student_id, semester),
+  FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ---------------------------------------------------------------------------

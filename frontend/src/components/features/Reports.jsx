@@ -15,7 +15,7 @@ const REPORTS = {
 const COLUMNS = {
   cgpa_student: [["roll_no", "Roll no."], ["name", "Student"], ["department", "Department"], ["year", "Year"], ["division", "Div"], ["cgpa", "GPA"], ["credits", "Credits"], ["backlogs", "Backlogs"]],
   cgpa_group: [["department", "Department"], ["year", "Year"], ["division", "Div"], ["students", "Students"], ["avg_cgpa", "Avg"], ["min_cgpa", "Min"], ["max_cgpa", "Max"], ["students_with_backlogs", "With backlogs"]],
-  course: [["code", "Code"], ["course", "Course"], ["semester", "Sem"], ["professor", "Professor"], ["enrolled", "Enrolled"], ["graded", "Graded"], ["avg_marks", "Avg marks"], ["avg_percent", "Avg %"], ["min_marks", "Min"], ["highest_marks", "Max"], ["pass_rate", "Pass %"], ["failed", "Failed"]],
+  course: [["code", "Code"], ["course", "Course"], ["semester", "Sem"], ["professor", "Professor"], ["enrolled", "Enrolled"], ["graded", "Graded"], ["avg_marks", "Avg marks"], ["avg_percent", "Avg %"], ["avg_grade_point", "Avg GP"], ["min_marks", "Min"], ["highest_marks", "Max"], ["pass_rate", "Pass %"], ["failed", "Failed"]],
   backlog: [["roll_no", "Roll no."], ["name", "Student"], ["department", "Department"], ["year", "Year"], ["division", "Div"], ["backlogs", "Backlogs"], ["courses", "Courses"]],
   attendance: [["roll_no", "Roll no."], ["name", "Student"], ["division", "Div"], ["course_code", "Course"], ["attended", "Present"], ["total", "Sessions"], ["percent", "%"]],
 };

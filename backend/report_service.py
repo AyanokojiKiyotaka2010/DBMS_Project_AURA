@@ -12,7 +12,9 @@ Definitions
   CGPA   = SUM(credits * grade_point) / SUM(credits) over every graded course of a student
            (a failed course counts with grade point 0 until the result is corrected).
   SGPA   = same formula restricted to one semester (pass `semester`).
-  Backlog= a result with status 'FAIL'.
+  Official CGPA: when a student has rows in semester_results (imported result sheets) and no
+           semester filter is given, the sheet's cumulative CGPA is reported instead of the computed one.
+  Backlog= a result with status 'FAIL' (FF, or II / NA / XX on an imported sheet).
   Attendance % = present marks / total marks in class_sessions' attendance_records.
            Students with no attendance records at all are not listed.
 """
@@ -165,16 +167,33 @@ async def cgpa_report(user: dict, p: dict) -> dict:
     students = []
     for r in rows:
         cg = _f(r["cgpa"])
-        if below is not None and not cg < below:
-            continue
-        if above is not None and not cg > above:
-            continue
+        if semester is not None:
+            if below is not None and not cg < below:
+                continue
+            if above is not None and not cg > above:
+                continue
         students.append({
             "student_id": r["student_id"], "name": r["name"], "roll_no": r["roll_no"],
             "department": r["department"], "year": r["year"], "year_no": r["year_no"],
             "division": r["division"], "cgpa": cg, "credits": _f(r["credits"], 1),
             "courses": int(r["courses"]), "backlogs": int(r["backlogs"] or 0),
         })
+
+    if semester is None and students:
+        # official cumulative CGPA from the result sheets (covers semesters we hold no course rows for)
+        official = {r["student_id"]: float(r["cgpa"]) for r in await db.all(
+            "SELECT sr.student_id, sr.cgpa FROM semester_results sr "
+            "WHERE sr.semester = (SELECT MAX(x.semester) FROM semester_results x WHERE x.student_id = sr.student_id)")}
+        kept = []
+        for s_ in students:
+            if s_["student_id"] in official:
+                s_["cgpa"] = round(official[s_["student_id"]], 2)
+            if below is not None and not s_["cgpa"] < below:
+                continue
+            if above is not None and not s_["cgpa"] > above:
+                continue
+            kept.append(s_)
+        students = kept
 
     label = f"SGPA (semester {semester})" if semester else "CGPA"
     if group_by == "student":
@@ -241,7 +260,7 @@ async def course_average_report(user: dict, p: dict) -> dict:
         "SELECT c.id AS course_id, c.code, c.name, c.semester, c.credits, c.max_marks, "
         "       d.name AS department, p.name AS professor, "
         "       COUNT(e.id) AS enrolled, COUNT(r.enrollment_id) AS graded, "
-        "       AVG(r.marks_obtained) AS avg_marks, AVG(r.percentage) AS avg_pct, "
+        "       AVG(r.marks_obtained) AS avg_marks, AVG(r.percentage) AS avg_pct, AVG(r.grade_point) AS avg_gp, "
         "       MIN(r.marks_obtained) AS min_marks, MAX(r.marks_obtained) AS max_marks_scored, "
         "       SUM(CASE WHEN r.status = 'PASS' THEN 1 ELSE 0 END) AS passed, "
         "       SUM(CASE WHEN r.status = 'FAIL' THEN 1 ELSE 0 END) AS failed "
@@ -264,7 +283,7 @@ async def course_average_report(user: dict, p: dict) -> dict:
             "course_id": r["course_id"], "code": r["code"], "course": r["name"],
             "semester": r["semester"], "department": r["department"], "professor": r["professor"],
             "max_marks": r["max_marks"], "enrolled": int(r["enrolled"]), "graded": graded,
-            "avg_marks": _f(r["avg_marks"]), "avg_percent": _f(r["avg_pct"]),
+            "avg_marks": _f(r["avg_marks"]), "avg_percent": _f(r["avg_pct"]), "avg_grade_point": _f(r["avg_gp"]),
             "min_marks": _f(r["min_marks"]), "highest_marks": _f(r["max_marks_scored"]),
             "passed": passed, "failed": int(r["failed"] or 0),
             "pass_rate": round(passed * 100.0 / graded, 1) if graded else None,
@@ -293,7 +312,7 @@ async def backlog_report(user: dict, p: dict) -> dict:
 
     rows = await db.all(
         "SELECT u.id AS student_id, u.name, u.roll_no, d.name AS department, y.label AS year, "
-        "       dv.name AS division, c.code, c.name AS course, c.semester, r.percentage "
+        "       dv.name AS division, c.code, c.name AS course, c.semester, r.percentage, r.grade_letter "
         "FROM users u "
         "JOIN enrollments e ON e.student_id = u.id "
         "JOIN courses c ON c.id = e.course_id "
@@ -313,7 +332,8 @@ async def backlog_report(user: dict, p: dict) -> dict:
             "backlogs": 0, "courses": [],
         })
         s["backlogs"] += 1
-        s["courses"].append(f"{r['code']} (sem {r['semester']}, {_f(r['percentage'], 1)}%)")
+        shown = f"{_f(r['percentage'], 1)}%" if r["percentage"] is not None else (r["grade_letter"] or "fail")
+        s["courses"].append(f"{r['code']} (sem {r['semester']}, {shown})")
     out = [s for s in by_student.values() if s["backlogs"] >= min_backlogs]
     out.sort(key=lambda s: (-s["backlogs"], s["name"]))
     for s in out:

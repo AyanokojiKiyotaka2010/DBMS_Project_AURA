@@ -271,8 +271,8 @@ async def add_course(inp: CourseIn, user=Depends(get_user)):
     if inp.credits <= 0 or inp.credits > 20 or inp.max_marks <= 0:
         raise HTTPException(400, "credits must be in (0, 20] and max_marks positive")
     await _validate_course_refs(inp.department_id, inp.year_id, inp.semester, inp.professor_id)
-    if await db.one("SELECT id FROM courses WHERE code=%s", (code,)):
-        raise HTTPException(400, "A course with that code already exists")
+    if await db.one("SELECT id FROM courses WHERE code=%s AND department_id=%s", (code, inp.department_id)):
+        raise HTTPException(400, "That department already has a course with this code")
     cid = await db.run(
         "INSERT INTO courses (code,name,credits,max_marks,department_id,year_id,semester,professor_id) "
         "VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",

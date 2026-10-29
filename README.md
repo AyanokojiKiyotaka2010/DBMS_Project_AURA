@@ -61,3 +61,20 @@ pytest backend/tests                            # API tests against a running se
   and `FRONTEND_URL=https://<your-app>.vercel.app` (comma-separate several; optional `FRONTEND_ORIGIN_REGEX`
   such as `https://.*\.vercel\.app` for preview deployments).
 - **Database**: any hosted MySQL 8; tables are created on first start.
+
+## Importing real result sheets (SVNIT PDFs)
+`backend/import_results.py` reads folders `1st_year … 4th_year` of "report sheet" PDFs and creates departments, students,
+courses, enrolments, letter grades and each student's official SGPA/CGPA.
+```bash
+# needs poppler's pdftotext on PATH (Windows: winget install oschwartz10612.Poppler, then reopen the terminal)
+cd backend
+python import_results.py C:\path\to\btech --dry-run     # parse + check every SGPA against the sheet, writes nothing
+python import_results.py C:\path\to\btech               # real import (run it once; re-running adds nothing twice)
+```
+- Years are shifted up by one (1st→2nd, 2nd→3rd, 3rd→4th); the 4th-year cohort has graduated → role **Alumni**
+  (`--graduates skip` leaves them out). Alumni are not included in reports.
+- Honors / Minor sheets are skipped. Sheets carry no divisions, marks or attendance: one division **A** is created per
+  department/year (re-split it in Academic Setup) and the attendance report stays empty until attendance is marked.
+- Imported students have placeholder e-mails (`<admission-no>@import.invalid`) and cannot log in; Administrators /
+  Professors see them in reports. Course names are read from truncated PDF headers — fix any odd ones in Academic Setup.
+- **Do not commit the PDFs or publish this data** (`btech/` and `*.pdf` are in `.gitignore`).

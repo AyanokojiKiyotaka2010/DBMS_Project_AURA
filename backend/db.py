@@ -131,6 +131,18 @@ def split_sql(text: str):
 
 
 async def ensure_schema():
-    """Create every table that does not exist yet (CREATE TABLE IF NOT EXISTS is idempotent)."""
+    """Create every table that does not exist yet (CREATE TABLE IF NOT EXISTS is idempotent),
+    then upgrade databases created by an earlier version of schema.sql."""
     for stmt in split_sql(SCHEMA_PATH.read_text(encoding="utf-8")):
         await run(stmt)
+    await _migrate()
+
+
+async def _migrate():
+    # v1 -> v2: grade-only results (marks optional)
+    await run("ALTER TABLE results MODIFY marks_obtained DECIMAL(6,2) NULL, MODIFY percentage DECIMAL(5,2) NULL")
+    # v1 -> v2: course codes are unique per department (EC106 is taught to many branches)
+    if await all("SHOW INDEX FROM courses WHERE Key_name = 'code'"):
+        await run("ALTER TABLE courses DROP INDEX code")
+    if not await all("SHOW INDEX FROM courses WHERE Key_name = 'uq_course_code_dept'"):
+        await run("ALTER TABLE courses ADD CONSTRAINT uq_course_code_dept UNIQUE (code, department_id)")
