@@ -11,7 +11,7 @@ mysql -u root -p -e "CREATE DATABASE aura CHARACTER SET utf8mb4"
 
 # 2. backend
 cd backend
-pip install -r requirements.txt
+pip install -r requirements.txt   # tests: requirements-dev.txt
 cp .env.example .env            # set MYSQL_* and JWT_SECRET
 uvicorn server:app --reload --port 8001
 #   tables are created automatically on start (schema.sql), and a bootstrap

@@ -30,7 +30,15 @@ async def init_pool():
     global _pool
     if _pool is not None:
         return _pool
+    ssl_ctx = None
+    if os.environ.get("MYSQL_SSL", "").lower() in ("1", "true", "yes"):      # managed MySQL (Aiven, TiDB, ...)
+        import ssl
+        ssl_ctx = ssl.create_default_context(cafile=os.environ.get("MYSQL_SSL_CA") or None)
+        if os.environ.get("MYSQL_SSL_VERIFY", "true").lower() in ("0", "false", "no"):
+            ssl_ctx.check_hostname = False
+            ssl_ctx.verify_mode = ssl.CERT_NONE
     _pool = await aiomysql.create_pool(
+        ssl=ssl_ctx,
         host=os.environ.get("MYSQL_HOST", "127.0.0.1"),
         port=int(os.environ.get("MYSQL_PORT", "3306")),
         user=os.environ.get("MYSQL_USER", "root"),
