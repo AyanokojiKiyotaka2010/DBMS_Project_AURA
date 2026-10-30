@@ -48,6 +48,7 @@ async def init_pool():
         autocommit=True,
         minsize=1,
         maxsize=int(os.environ.get("MYSQL_POOL_SIZE", "10")),
+        pool_recycle=int(os.environ.get("MYSQL_POOL_RECYCLE", "120")),   # drop idle connections before the server does
         init_command="SET time_zone='+00:00'",
     )
     return _pool
@@ -59,6 +60,12 @@ async def close_pool():
         _pool.close()
         await _pool.wait_closed()
         _pool = None
+
+
+async def reconnect():
+    """Throw away every pooled connection and open fresh ones (used after the server drops us)."""
+    await close_pool()
+    await init_pool()
 
 
 class _Tx:

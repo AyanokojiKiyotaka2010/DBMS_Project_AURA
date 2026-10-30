@@ -37,6 +37,7 @@ from common import (  # noqa: E402
     user_from_token, user_public, validate_attachments, verify_pw, year_id_by_label,
 )
 import academics  # noqa: E402
+import imports  # noqa: E402
 import reports  # noqa: E402
 
 ESCALATE_TO_SENIOR_HOURS = 48
@@ -873,6 +874,7 @@ async def ws_stats(user=Depends(get_user)):
 # ================================================================= wiring
 api.include_router(academics.router)
 api.include_router(reports.router)
+api.include_router(imports.router)
 app.include_router(api)
 
 _origins = [o.strip().rstrip("/") for o in os.environ.get("FRONTEND_URL", "").split(",") if o.strip()]

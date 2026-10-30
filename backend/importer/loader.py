@@ -10,6 +10,7 @@ Rules
     password, so they cannot log in until the college decides how accounts are claimed.
   * Re-running is safe: users (by roll no), courses, enrolments, results are only added once.
 """
+import asyncio
 import re
 
 import db
@@ -34,6 +35,31 @@ def _chunks(seq, n=CHUNK):
 
 def _in(n):
     return ",".join(["%s"] * n)
+
+
+async def _insert(sql, rows, size=250):
+    """Batched INSERT that survives dropped connections (reconnect + retry) and re-sent batches
+    (duplicate-key errors fall back to row-by-row so already-saved rows are simply skipped)."""
+    for part in _chunks(rows, size):
+        for attempt in range(1, 7):
+            try:
+                await db.many(sql, part)
+                break
+            except Exception as e:                                   # noqa: BLE001
+                name = type(e).__name__
+                if name == "IntegrityError":
+                    for row in part:
+                        try:
+                            await db.run(sql, row)
+                        except Exception as e2:                      # noqa: BLE001
+                            if type(e2).__name__ != "IntegrityError":
+                                raise
+                    break
+                if attempt < 6 and name in ("OperationalError", "InterfaceError", "ConnectionResetError", "OSError"):
+                    await asyncio.sleep(2 * attempt)
+                    await db.reconnect()
+                    continue
+                raise
 
 
 async def load(sheets, graduates="alumni", log=print):
@@ -130,8 +156,7 @@ async def load(sheets, graduates="alumni", log=print):
         if key not in have:
             have.add(key)
             new_pairs.append(key)
-    for part in _chunks(new_pairs):
-        await db.many("INSERT INTO enrollments (student_id, course_id) VALUES (%s,%s)", part)
+    await _insert("INSERT INTO enrollments (student_id, course_id) VALUES (%s,%s)", new_pairs)
     stats["enrollments_new"] = len(new_pairs)
 
     # ---- results (one per enrolment, only where none exists)
@@ -151,9 +176,8 @@ async def load(sheets, graduates="alumni", log=print):
         done.add(eid)
         gp = GRADE_POINTS.get(letter, 0)
         rows.append((eid, gp, letter, "PASS" if gp > 0 else "FAIL", now))
-    for part in _chunks(rows):
-        await db.many("INSERT INTO results (enrollment_id,marks_obtained,percentage,grade_point,grade_letter,status,updated_at) "
-                      "VALUES (%s,NULL,NULL,%s,%s,%s,%s)", part)
+    await _insert("INSERT INTO results (enrollment_id,marks_obtained,percentage,grade_point,grade_letter,status,updated_at) "
+                  "VALUES (%s,NULL,NULL,%s,%s,%s,%s)", rows)
     stats["results_new"] = len(rows)
 
     # ---- official SGPA / CGPA per semester
@@ -164,9 +188,8 @@ async def load(sheets, graduates="alumni", log=print):
         if key not in have_sem:
             have_sem.add(key)
             new_sem.append((key[0], sem, sgpa, cgpa, reg, earned))
-    for part in _chunks(new_sem):
-        await db.many("INSERT INTO semester_results (student_id,semester,sgpa,cgpa,registered_credits,earned_credits) "
-                      "VALUES (%s,%s,%s,%s,%s,%s)", part)
+    await _insert("INSERT INTO semester_results (student_id,semester,sgpa,cgpa,registered_credits,earned_credits) "
+                  "VALUES (%s,%s,%s,%s,%s,%s)", new_sem)
     stats["semester_rows_new"] = len(new_sem)
     log(f"import done: {stats}")
     return stats
