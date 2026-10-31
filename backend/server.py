@@ -37,6 +37,9 @@ from common import (  # noqa: E402
     load_attachments, now_utc, parse_iso, require_role, save_attachments, set_auth_cookies, to_db,
     user_from_token, user_public, validate_attachments, verify_pw, year_id_by_label,
 )
+import mailer  # noqa: E402
+from anon import author_proof, is_author  # noqa: E402
+from auth_codes import CodeError, check_code, issue_code  # noqa: E402
 import academics  # noqa: E402
 import imports  # noqa: E402
 import reports  # noqa: E402
@@ -57,10 +60,17 @@ async def bootstrap_admin():
     pw = os.environ.get("ADMIN_PASSWORD", "admin123")
     name = os.environ.get("ADMIN_NAME", "Campus Admin")
     await db.run(
-        "INSERT INTO users (name,email,password_hash,role,created_at) VALUES (%s,%s,%s,'Administrator',%s)",
+        "INSERT INTO users (name,email,email_verified,password_hash,role,created_at) VALUES (%s,%s,1,%s,'Administrator',%s)",
         (name, email, hash_pw(pw), to_db(now_utc())),
     )
     logger.warning("Created bootstrap administrator %s — change this password after first login.", email)
+
+
+async def backfill_author_proofs():
+    """Older queries stored the asker's user id. Replace it with the HMAC proof (anon.py) and forget the id."""
+    for r in await db.all("SELECT id, real_author_id FROM queries WHERE real_author_id IS NOT NULL"):
+        await db.run("UPDATE queries SET author_proof=%s, real_author_id=NULL WHERE id=%s",
+                     (author_proof(r["real_author_id"], r["id"]), r["id"]))
 
 
 @asynccontextmanager
@@ -68,6 +78,7 @@ async def lifespan(_: FastAPI):
     await db.init_pool()
     await db.ensure_schema()
     await bootstrap_admin()
+    await backfill_author_proofs()
     yield
     await db.close_pool()
 
@@ -237,6 +248,50 @@ manager = ConnectionManager()
 
 
 # ================================================================= Auth
+def verification_enabled() -> bool:
+    """EMAIL_VERIFICATION=on|off|auto (default auto: required as soon as an e-mail provider is configured)."""
+    mode = os.environ.get("EMAIL_VERIFICATION", "auto").strip().lower()
+    if mode in ("on", "true", "1", "yes"):
+        return True
+    if mode in ("off", "false", "0", "no"):
+        return False
+    return mailer.configured()
+
+
+def check_email_domain(email: str):
+    """ALLOWED_EMAIL_DOMAINS=svnit.ac.in,coed.svnit.ac.in restricts sign-up to official addresses (unset = any)."""
+    allowed = [d.strip().lower().lstrip("@") for d in os.environ.get("ALLOWED_EMAIL_DOMAINS", "").split(",") if d.strip()]
+    if not allowed:
+        return
+    domain = email.rsplit("@", 1)[-1].lower()
+    if not any(domain == d or domain.endswith("." + d) for d in allowed):
+        raise HTTPException(400, "Please use your official institute email address (" + ", ".join("@" + d for d in allowed) + ")")
+
+
+async def send_code(uid: int, name: str, email: str, purpose: str) -> bool:
+    try:
+        code = await issue_code(uid, purpose)
+    except CodeError as e:
+        raise HTTPException(e.status, e.message)
+    subject, text, html = mailer.code_message(name, code, purpose)
+    return await mailer.send_email(email, subject, text, html)
+
+
+class VerifyEmailIn(BaseModel):
+    email: EmailStr
+    code: str
+
+
+class EmailIn(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordIn(BaseModel):
+    email: EmailStr
+    code: str
+    new_password: str
+
+
 @api.get("/health")
 async def health():
     """Liveness + database check (no data returned)."""
@@ -260,7 +315,11 @@ async def register(inp: UserRegister, response: Response):
         role, requested = "Student", wanted        # starts as Student; an Administrator approves the request
     else:
         raise HTTPException(400, "Choose Student, Senior, Alumni, Professor, CR, DCR or Convener")
-    if await db.one("SELECT id FROM users WHERE email=%s", (email,)):
+    check_email_domain(email)
+    verify_on = verification_enabled()
+    existing = await fetch_user("u.email=%s", (email,))
+    # an address nobody has proved they own can be claimed again (stops squatting on someone's official email)
+    if existing and (existing["email_verified"] or not verify_on):
         raise HTTPException(400, "Email already registered")
 
     # validate the academic placement against what the admin has configured
@@ -275,15 +334,25 @@ async def register(inp: UserRegister, response: Response):
         if dv["department_id"] != inp.department_id or dv["year_id"] != inp.year_id:
             raise HTTPException(400, "Division does not belong to the chosen department / year")
     roll = (inp.roll_no or "").strip() or None
-    if roll and await db.one("SELECT id FROM users WHERE roll_no=%s", (roll,)):
+    if roll and await db.one("SELECT id FROM users WHERE roll_no=%s AND id<>%s", (roll, existing["id"] if existing else 0)):
         raise HTTPException(400, "Roll number already registered")
 
-    uid = await db.run(
-        "INSERT INTO users (name,email,password_hash,role,requested_role,department_id,year_id,division_id,roll_no,created_at) "
-        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-        (inp.name.strip(), email, hash_pw(inp.password), role, requested, inp.department_id, inp.year_id,
-         inp.division_id, roll, to_db(now_utc())),
-    )
+    if existing:
+        uid = existing["id"]
+        await db.run(
+            "UPDATE users SET name=%s, password_hash=%s, role=%s, requested_role=%s, department_id=%s, year_id=%s, "
+            "division_id=%s, roll_no=%s WHERE id=%s",
+            (inp.name.strip(), hash_pw(inp.password), role, requested, inp.department_id, inp.year_id,
+             inp.division_id, roll, uid))
+    else:
+        uid = await db.run(
+            "INSERT INTO users (name,email,email_verified,password_hash,role,requested_role,department_id,year_id,division_id,roll_no,created_at) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            (inp.name.strip(), email, 0 if verify_on else 1, hash_pw(inp.password), role, requested, inp.department_id,
+             inp.year_id, inp.division_id, roll, to_db(now_utc())))
+    if verify_on:
+        sent = await send_code(uid, inp.name.strip(), email, "verify")
+        return {"verification_required": True, "email": email, "email_sent": sent}
     token = set_auth_cookies(response, uid, email)
     return {"user": user_public(await fetch_user("u.id=%s", (uid,))), "token": token}
 
@@ -294,8 +363,60 @@ async def login(inp: UserLogin, response: Response):
     u = await fetch_user("u.email=%s", (email,))
     if not u or not verify_pw(inp.password, u["password_hash"]):
         raise HTTPException(401, "Invalid email or password")
+    if verification_enabled() and not u["email_verified"]:
+        raise HTTPException(403, "Email not verified")
     token = set_auth_cookies(response, u["id"], email)
     return {"user": user_public(u), "token": token}
+
+
+GENERIC_SENT = {"ok": True, "message": "If that address has an account, a code is on its way (you can ask once a minute)."}
+
+
+@api.post("/auth/verify-email")
+async def verify_email(inp: VerifyEmailIn, response: Response):
+    u = await fetch_user("u.email=%s", (inp.email.lower().strip(),))
+    if not u or u["email_verified"] or not await check_code(u["id"], "verify", inp.code):
+        raise HTTPException(400, "That code is wrong or has expired — ask for a new one.")
+    await db.run("UPDATE users SET email_verified=1 WHERE id=%s", (u["id"],))
+    token = set_auth_cookies(response, u["id"], u["email"])
+    return {"user": user_public(await fetch_user("u.id=%s", (u["id"],))), "token": token}
+
+
+@api.post("/auth/resend-code")
+async def resend_code(inp: EmailIn):
+    u = await fetch_user("u.email=%s", (inp.email.lower().strip(),))
+    if u and not u["email_verified"] and verification_enabled():
+        try:
+            await send_code(u["id"], u["name"], u["email"], "verify")
+        except HTTPException as e:
+            if e.status_code != 429:
+                raise
+    return GENERIC_SENT
+
+
+@api.post("/auth/forgot-password")
+async def forgot_password(inp: EmailIn):
+    u = await fetch_user("u.email=%s", (inp.email.lower().strip(),))
+    if u and not u["email"].endswith("@import.invalid"):
+        try:
+            await send_code(u["id"], u["name"], u["email"], "reset")
+        except HTTPException as e:
+            if e.status_code != 429:
+                raise
+    return GENERIC_SENT
+
+
+@api.post("/auth/reset-password")
+async def reset_password(inp: ResetPasswordIn):
+    if len(inp.new_password) < 8:
+        raise HTTPException(400, "New password must be at least 8 characters")
+    u = await fetch_user("u.email=%s", (inp.email.lower().strip(),))
+    if not u or not await check_code(u["id"], "reset", inp.code):
+        raise HTTPException(400, "That code is wrong or has expired — ask for a new one.")
+    # proving control of the mailbox also verifies the address
+    await db.run("UPDATE users SET password_hash=%s, email_verified=1 WHERE id=%s", (hash_pw(inp.new_password), u["id"]))
+    await db.run("DELETE FROM email_codes WHERE user_id=%s", (u["id"],))
+    return {"ok": True}
 
 
 @api.post("/auth/logout")
@@ -405,32 +526,38 @@ async def mark_attendance(sub_id: int, inp: AttendanceMark, user=Depends(get_use
 
 # ================================================================= Queries (anonymous)
 _Q_SELECT = (
-    "SELECT q.id, q.topic, q.query_text, q.author_encrypted_id, q.real_author_id, q.status, q.created_at, "
+    "SELECT q.id, q.topic, q.query_text, q.author_encrypted_id, q.author_proof, q.status, q.created_at, "
     "       q.resolved_at, d.name AS department "
     "FROM queries q LEFT JOIN departments d ON d.id = q.department_id "
 )
 
 
+def _anon_answer(a: dict, qid: int, proof: str) -> dict:
+    """Answers show name + role (accountability) — except the asker's own follow-ups, which stay anonymous."""
+    if is_author(a["user_id"], qid, proof):
+        return {"author": "Anonymous asker", "role": "Asker", "user_id": None, "text": a["text"], "time": iso(a["created_at"])}
+    return {"author": a["author_name"], "role": a["role"],
+            "user_id": str(a["user_id"]) if a["user_id"] is not None else None,
+            "text": a["text"], "time": iso(a["created_at"])}
+
+
 async def _queries_out(rows: list, viewer_id: str) -> list:
     ids = [r["id"] for r in rows]
     answers, atts = {}, await load_attachments("query", ids)
+    proofs = {r["id"]: r["author_proof"] for r in rows}
     if ids:
         for a in await db.all(
             f"SELECT query_id, user_id, author_name, role, text, created_at FROM query_answers "
             f"WHERE query_id IN ({_in(len(ids))}) ORDER BY id", tuple(ids)):
-            answers.setdefault(a["query_id"], []).append({
-                "author": a["author_name"], "role": a["role"],
-                "user_id": str(a["user_id"]) if a["user_id"] is not None else None,
-                "text": a["text"], "time": iso(a["created_at"]),
-            })
+            answers.setdefault(a["query_id"], []).append(_anon_answer(a, a["query_id"], proofs.get(a["query_id"])))
     out = []
     for r in rows:
-        mine = r["real_author_id"] is not None and str(r["real_author_id"]) == viewer_id
+        mine = is_author(int(viewer_id), r["id"], r["author_proof"])
         out.append({
             "id": str(r["id"]), "department": r.get("department") or "", "topic": r["topic"], "query": r["query_text"],
             "author_encrypted_id": r["author_encrypted_id"],
-            # anonymity: the real author id is only ever revealed to the author themself
-            "real_author_id": str(r["real_author_id"]) if mine else None,
+            # the author's id is not stored; "mine" is recomputed per viewer and only ever revealed to the author
+            "real_author_id": viewer_id if mine else None,
             "status": r["status"], "answers": answers.get(r["id"], []), "attachments": atts.get(r["id"], []),
             "created_at": iso(r["created_at"]), "resolved_at": iso(r.get("resolved_at")),
             "stage": compute_stage(r["status"], r["created_at"]),
@@ -454,11 +581,11 @@ async def create_query(inp: QueryCreate, user=Depends(get_user)):
     dept_id = await dept_id_by_name(inp.department)   # unknown / free-text department -> campus-wide query
     async with db.transaction() as tx:
         qid = await tx.run(
-            "INSERT INTO queries (department_id,topic,query_text,author_encrypted_id,real_author_id,status,created_at) "
-            "VALUES (%s,%s,%s,%s,%s,'Open',%s)",
-            (dept_id, inp.topic or "General", inp.query.strip(), f"enc_usr_{uuid.uuid4().hex[:10]}",
-             int(user["user_id"]), to_db(now_utc())),
+            "INSERT INTO queries (department_id,topic,query_text,author_encrypted_id,status,created_at) "
+            "VALUES (%s,%s,%s,%s,'Open',%s)",
+            (dept_id, inp.topic or "General", inp.query.strip(), f"anon_{uuid.uuid4().hex[:10]}", to_db(now_utc())),
         )
+        await tx.run("UPDATE queries SET author_proof=%s WHERE id=%s", (author_proof(int(user["user_id"]), qid), qid))
         await save_attachments(tx, "query", qid, attachments)
     doc = (await _queries_out(await db.all(_Q_SELECT + "WHERE q.id=%s", (qid,)), user["user_id"]))[0]
     broadcast_doc = {**doc, "real_author_id": None}      # never push the author's identity to other clients
@@ -478,8 +605,8 @@ async def answer_query(qid: int, inp: AnswerCreate, user=Depends(get_user)):
             (qid, int(user["user_id"]), user["name"], user["role"], inp.text.strip(), to_db(now)),
         )
         await tx.run("UPDATE queries SET status='Answered' WHERE id=%s", (qid,))
-    ans = {"author": user["name"], "role": user["role"], "user_id": user["user_id"],
-           "text": inp.text.strip(), "time": iso(now)}
+    ans = _anon_answer({"user_id": int(user["user_id"]), "author_name": user["name"], "role": user["role"],
+                        "text": inp.text.strip(), "created_at": now}, qid, q["author_proof"])
     await manager.broadcast(
         {"type": "query.answered", "payload": {"query_id": str(qid), "answer": ans, "department": q.get("department")}},
         department=q.get("department") or None,
@@ -489,10 +616,10 @@ async def answer_query(qid: int, inp: AnswerCreate, user=Depends(get_user)):
 
 @api.post("/queries/{qid}/resolve")
 async def resolve_query(qid: int, user=Depends(get_user)):
-    q = await db.one("SELECT id, real_author_id FROM queries WHERE id=%s", (qid,))
+    q = await db.one("SELECT id, author_proof FROM queries WHERE id=%s", (qid,))
     if not q:
         raise HTTPException(404, "Query not found")
-    if str(q["real_author_id"]) != user["user_id"] and user["role"] not in ("Administrator", "Professor"):
+    if not is_author(int(user["user_id"]), qid, q["author_proof"]) and user["role"] not in ("Administrator", "Professor"):
         raise HTTPException(403, "Only the author, professor or admin can resolve")
     await db.run("UPDATE queries SET status='Resolved', resolved_at=%s WHERE id=%s", (to_db(now_utc()), qid))
     return {"ok": True}

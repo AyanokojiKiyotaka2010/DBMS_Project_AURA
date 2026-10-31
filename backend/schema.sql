@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS users (
   id            INT AUTO_INCREMENT PRIMARY KEY,
   name          VARCHAR(120) NOT NULL,
   email         VARCHAR(190) NOT NULL,
+  email_verified TINYINT(1) NOT NULL DEFAULT 0,
   password_hash VARCHAR(100) NOT NULL,
   role          VARCHAR(20)  NOT NULL DEFAULT 'Student',
   requested_role VARCHAR(20) NULL,                 -- role asked for at sign-up, pending administrator approval
@@ -59,6 +60,19 @@ CREATE TABLE IF NOT EXISTS users (
   FOREIGN KEY (department_id) REFERENCES departments(id)    ON DELETE SET NULL,
   FOREIGN KEY (year_id)       REFERENCES academic_years(id) ON DELETE SET NULL,
   FOREIGN KEY (division_id)   REFERENCES divisions(id)      ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- One-time codes sent by e-mail (address verification, password reset); only a salted hash is kept.
+CREATE TABLE IF NOT EXISTS email_codes (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  user_id    INT NOT NULL,
+  purpose    VARCHAR(10) NOT NULL,                  -- verify | reset
+  code_hash  CHAR(64) NOT NULL,
+  expires_at DATETIME NOT NULL,
+  attempts   INT NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL,
+  INDEX ix_codes_user (user_id, purpose),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ---------------------------------------------------------------------------
@@ -188,7 +202,8 @@ CREATE TABLE IF NOT EXISTS queries (
   topic               VARCHAR(120) NOT NULL DEFAULT 'General',
   query_text          TEXT NOT NULL,
   author_encrypted_id VARCHAR(40) NOT NULL,
-  real_author_id      INT NULL,
+  real_author_id      INT NULL,                         -- legacy; new rows store only author_proof
+  author_proof        CHAR(64) NULL,                    -- HMAC(user, query): see anon.py
   status              VARCHAR(12) NOT NULL DEFAULT 'Open',   -- Open | Answered | Resolved | Archived
   created_at          DATETIME NOT NULL,
   resolved_at         DATETIME NULL,

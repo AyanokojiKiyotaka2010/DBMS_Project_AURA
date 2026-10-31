@@ -154,6 +154,12 @@ async def ensure_schema():
 
 
 async def _migrate():
+    # v4 -> v5: e-mail verification (existing accounts are trusted) and anonymous-author proofs
+    if not await all("SHOW COLUMNS FROM users LIKE 'email_verified'"):
+        await run("ALTER TABLE users ADD COLUMN email_verified TINYINT(1) NOT NULL DEFAULT 0 AFTER email")
+        await run("UPDATE users SET email_verified=1 WHERE email NOT LIKE %s", ("%@import.invalid",))
+    if not await all("SHOW COLUMNS FROM queries LIKE 'author_proof'"):
+        await run("ALTER TABLE queries ADD COLUMN author_proof CHAR(64) NULL AFTER real_author_id")
     # v3 -> v4: club details
     for col, ddl in [("entity_type", "VARCHAR(120)"), ("website", "VARCHAR(500)"), ("instagram", "VARCHAR(500)"), ("linkedin", "VARCHAR(500)")]:
         if not await all(f"SHOW COLUMNS FROM clubs LIKE '{col}'"):

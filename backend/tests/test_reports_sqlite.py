@@ -284,6 +284,57 @@ def test_club_import_is_idempotent():
     assert c.all("SELECT count(*) n FROM club_people")[0]["n"] == 2
 
 
+def test_coverage_and_alumni_toggle():
+    from importer.loader import load
+    c = sqlite_db.install(db)
+    def sheet(adm, sem_name="SECOND", code="ME101 T"):
+        return {"kind": "regular", "branch": "MECHANICAL ENGINEERING", "semester_name": sem_name, "courses": {code: 4.0},
+                "course_names": {}, "students": [{"admission_no": adm, "name": "S " + adm, "semester": 2, "grades": {code: "BB"},
+                "credits": {}, "reg_credit": 4, "earned_credit": 4, "sgpa": 8.0, "cgpa": 8.0, "backlog_credits": 0}]}
+    run(load([(1, sheet("U25ME001")), (4, sheet("U22ME002", "EIGHT", "ME401 T"))], log=lambda *a: None))
+    admin = {"role": "Administrator", "department_id": None}
+    cov = run(rs.coverage_report(admin, {}))["rows"]
+    assert [(r["year"], r["semester"], r["students"]) for r in cov] == [("2nd Year", 2, 1)]       # graduates hidden by default
+    cov = run(rs.coverage_report(admin, {"include_alumni": "true"}))["rows"]
+    assert {(r["year"], r["semester"]) for r in cov} == {("2nd Year", 2), ("Graduated", 8)}
+    assert run(rs.cgpa_report(admin, {"include_alumni": "true"}))["summary"]["students"] == 2
+    cr = {"role": "CR", "department_id": 1, "year_id": 1, "division_id": 1}
+    assert run(rs.cgpa_report(cr, {"include_alumni": "true"}))["summary"]["students"] == 0        # a CR can never widen scope
+
+
+def test_email_codes():
+    import auth_codes as ac
+    from datetime import datetime, timedelta
+    c = sqlite_db.install(db)
+    c.run("INSERT INTO users (name,email,password_hash,created_at) VALUES ('A','a@x.edu','x','2026-01-01 00:00:00')")
+    code = run(ac.issue_code(1, "verify"))
+    assert len(code) == 6 and code.isdigit()
+    try:
+        run(ac.issue_code(1, "verify")); assert False, "resend must be rate limited"
+    except ac.CodeError as e:
+        assert e.status == 429
+    assert not run(ac.check_code(1, "reset", code))                       # a code is only good for its own purpose
+    wrong = "000000" if code != "000000" else "111111"
+    for _ in range(ac.MAX_ATTEMPTS):
+        assert not run(ac.check_code(1, "verify", wrong))
+    assert not run(ac.check_code(1, "verify", code)), "locked after too many wrong guesses"
+    c.run("UPDATE email_codes SET created_at='2000-01-01 00:00:00'")       # let the resend window pass
+    code = run(ac.issue_code(1, "verify"))
+    assert run(ac.check_code(1, "verify", code)) and not run(ac.check_code(1, "verify", code))   # single use
+    c.run("UPDATE email_codes SET created_at='2000-01-01 00:00:00'")
+    code = run(ac.issue_code(1, "reset"))
+    c.run("UPDATE email_codes SET expires_at='2000-01-01 00:00:00'")
+    assert not run(ac.check_code(1, "reset", code)), "expired"
+
+
+def test_anonymous_author_proof():
+    import anon
+    p = anon.author_proof(7, 42)
+    assert anon.is_author(7, 42, p) and not anon.is_author(8, 42, p) and not anon.is_author(7, 43, p)
+    assert not anon.is_author(7, 42, None) and not anon.is_author(None, 42, p)
+    assert len(p) == 64 and p == anon.author_proof(7, 42)   # deterministic, fixed length, no raw id inside
+
+
 if __name__ == "__main__":
     n = 0
     for name, fn in sorted(globals().items()):

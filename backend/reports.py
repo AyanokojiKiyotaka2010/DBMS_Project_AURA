@@ -1,6 +1,7 @@
 """HTTP layer for the role-scoped reports (the logic and SQL live in report_service.py).
 
 GET /api/reports/scope             what the caller is locked to (pre-fills / disables filters in the UI)
+GET /api/reports/coverage          which year/semester combinations have data (+ include_alumni=true)
 GET /api/reports/cgpa              ?group_by=student|department|year|department_year|division
                                     &department_id&year_id&division_id&semester&cgpa_below&cgpa_above
 GET /api/reports/course-average    ?semester | ?course_id  [&department_id&year_id&division_id]
@@ -30,6 +31,11 @@ async def scope(user=Depends(get_user)):
     except rs.ReportError as e:
         raise HTTPException(e.status, e.message)
     return {"role": user["role"], "scope": s, "locked": {k: v is not None for k, v in s.items()}}
+
+
+@router.get("/coverage")
+async def coverage(request: Request, user=Depends(get_user)):
+    return await _run(rs.coverage_report, user, request)
 
 
 @router.get("/cgpa")

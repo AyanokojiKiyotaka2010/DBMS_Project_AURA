@@ -28,6 +28,9 @@ export function Reports({ user }) {
   const [p, setP] = useState({ department_id: "", year_id: "", division_id: "", semester: "", course_id: "", group_by: "student", threshold: "75", mode: "overall", min_backlogs: "1", cgpa_below: "", cgpa_above: "", date_from: "", date_to: "" });
   const [res, setRes] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [coverage, setCoverage] = useState([]);
+  const [includeAlumni, setIncludeAlumni] = useState(false);
+  const canAlumni = ["Administrator", "Professor"].includes(user.role);
   const set = (k) => (v) => setP((s) => ({ ...s, [k]: v }));
 
   useEffect(() => {
@@ -39,6 +42,29 @@ export function Reports({ user }) {
     }).catch((e) => toast.error(errMsg(e)));
     axios.get(`${API}/courses`).then((r) => setCourses(r.data)).catch(() => {});
   }, []);
+
+  // which (year, semester) pairs really hold results -> the Semester dropdown only offers those
+  useEffect(() => {
+    axios.get(`${API}/reports/coverage`, { params: includeAlumni ? { include_alumni: true } : {} })
+      .then((r) => setCoverage(r.data.rows)).catch(() => setCoverage([]));
+  }, [includeAlumni]);
+
+  const semOptions = useMemo(() => {
+    if (!coverage.length) return [1, 2, 3, 4, 5, 6, 7, 8].map((n) => ({ value: n, label: `Semester ${n}` }));
+    const rows = p.year_id ? coverage.filter((c) => String(c.year_id) === p.year_id) : coverage;
+    const bySem = {};
+    rows.forEach((c) => { (bySem[c.semester] = bySem[c.semester] || []).push(c); });
+    return Object.keys(bySem).map(Number).sort((a, b) => a - b).map((n) => ({
+      value: n,
+      label: p.year_id
+        ? `Semester ${n} · ${bySem[n].reduce((t, c) => t + c.students, 0)} students`
+        : `Semester ${n} · ${bySem[n].map((c) => c.year).join(", ")}`,
+    }));
+  }, [coverage, p.year_id]);
+
+  useEffect(() => {          // drop a semester that has no data for the newly chosen year
+    if (p.semester && !semOptions.some((o) => String(o.value) === String(p.semester))) setP((st) => ({ ...st, semester: "", course_id: "" }));
+  }, [semOptions]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const divisions = useMemo(
     () => structure.divisions.filter((d) => (!p.department_id || String(d.department_id) === p.department_id) && (!p.year_id || String(d.year_id) === p.year_id)),
@@ -59,13 +85,14 @@ export function Reports({ user }) {
       attendance: [...common, "course_id", "threshold", "mode", "date_from", "date_to"],
     }[kind];
     per.forEach((k) => { if (p[k] !== "" && p[k] != null) q[k] = p[k]; });
+    if (includeAlumni && canAlumni) q.include_alumni = true;
     setBusy(true);
     try {
       const r = await axios.get(`${API}/reports/${REPORTS[kind].path}`, { params: q });
       setRes({ kind, ...r.data });
     } catch (e) { setRes(null); toast.error(errMsg(e, "Report failed")); }
     finally { setBusy(false); }
-  }, [kind, p]);
+  }, [kind, p, includeAlumni, canAlumni]);
 
   const cols = res && (res.kind === "cgpa" ? COLUMNS[res.group_by === "student" ? "cgpa_student" : "cgpa_group"]
     : res.kind === "attendance" ? COLUMNS.attendance.filter(([k]) => res.mode === "per_course" || k !== "course_code")
@@ -100,7 +127,7 @@ export function Reports({ user }) {
           <Field label="Department"><Select testid="rp-dept" disabled={lockedDept} value={p.department_id} onChange={(v) => setP((s) => ({ ...s, department_id: v, division_id: "", course_id: "" }))} placeholder="All" options={structure.departments.map((d) => ({ value: d.id, label: d.name }))} /></Field>
           <Field label="Year"><Select testid="rp-year" disabled={lockedYear} value={p.year_id} onChange={(v) => setP((s) => ({ ...s, year_id: v, division_id: "" }))} placeholder="All" options={structure.years.map((y) => ({ value: y.id, label: y.label }))} /></Field>
           <Field label="Division"><Select testid="rp-div" disabled={lockedDiv} value={p.division_id} onChange={set("division_id")} placeholder="All" options={divisions.map((d) => ({ value: d.id, label: `${d.name}${!p.department_id ? ` (${d.department})` : ""}` }))} /></Field>
-          <Field label={kind === "course" ? "Semester" : "Semester (optional)"}><Select testid="rp-sem" value={p.semester} onChange={(v) => setP((s) => ({ ...s, semester: v, course_id: "" }))} placeholder="Any" options={[1, 2, 3, 4, 5, 6, 7, 8].map((n) => ({ value: n, label: `Semester ${n}` }))} /></Field>
+          <Field label={kind === "course" ? "Semester" : "Semester (optional)"}><Select testid="rp-sem" value={p.semester} onChange={(v) => setP((s) => ({ ...s, semester: v, course_id: "" }))} placeholder="Any" options={semOptions} /></Field>
 
           {kind === "cgpa" && (<>
             <Field label="Group by"><Select testid="rp-groupby" value={p.group_by} onChange={set("group_by")} options={[
@@ -127,6 +154,12 @@ export function Reports({ user }) {
             <Field label="To"><input type="date" className={inputCls} value={p.date_to} onChange={(e) => set("date_to")(e.target.value)} /></Field>
           </>)}
         </div>
+        {canAlumni && (
+          <label className="mt-3 flex items-center gap-2 text-xs text-ink-2">
+            <input type="checkbox" data-testid="rp-alumni" checked={includeAlumni} onChange={(e) => setIncludeAlumni(e.target.checked)} />
+            Include the graduated batch (final-year results of students who have since left)
+          </label>
+        )}
         <div className="mt-4 flex gap-2">
           <Btn data-testid="rp-run" onClick={run} disabled={busy || (kind === "course" && !p.semester && !p.course_id)}>{busy ? "Running…" : "Run report"}</Btn>
           {res && res.rows.length > 0 && <Btn variant="ghost" data-testid="rp-csv" onClick={() => downloadCsv(`aura-${res.kind}.csv`, cgpaGroupCols, res.rows)}>Download CSV</Btn>}

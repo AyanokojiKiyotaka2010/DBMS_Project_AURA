@@ -93,3 +93,16 @@ and clubs in the UI afterwards.
 ## Auth note
 The frontend and API live on different domains (Vercel / Render), so login also returns a token that the app stores and
 sends as `Authorization: Bearer …` (cookies alone are blocked by many browsers).
+
+## Email verification & forgot password
+Sign-up sends a 6-digit code (valid 15 min, 5 tries) that must be entered before the account can log in; "Forgot
+password?" works the same way. Configure an HTTPS mail provider on the backend (Render's free tier blocks SMTP):
+1. Brevo (free tier; verify a sender address under *Senders*) -> *SMTP & API* -> create an API key.
+2. Render env vars: `EMAIL_PROVIDER=brevo`, `BREVO_API_KEY=…`, `EMAIL_FROM=<verified sender>`; optional
+   `ALLOWED_EMAIL_DOMAINS=svnit.ac.in,coed.svnit.ac.in` to accept official addresses only.
+Existing accounts are trusted automatically. Without a provider, verification stays off (nothing could be sent).
+An unverified sign-up never blocks the real owner of an address: they can simply register it again.
+
+## Anonymous queries
+The asker's id is not stored — only an HMAC proof (`anon.py`) so the author can still resolve their own query. Answers
+show the answerer's name and role (accountability), but the asker's own follow-ups appear as "Anonymous asker".

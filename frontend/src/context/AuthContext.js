@@ -44,10 +44,23 @@ export const AuthProvider = ({ children }) => {
       { name, email, password, department_id, role, year_id, division_id, roll_no },
       { withCredentials: true }
     );
+    if (response.data.verification_required) return response.data; // must confirm the e-mail code first
     setAuthToken(response.data.token);
     setUser(response.data.user || response.data);
     return response.data;
   };
+
+  // e-mail verification + password reset (all return the server's JSON)
+  const verifyEmail = async (email, code) => {
+    const response = await axios.post(`${API}/auth/verify-email`, { email, code }, { withCredentials: true });
+    setAuthToken(response.data.token);
+    setUser(response.data.user);
+    return response.data;
+  };
+  const resendCode = async (email) => (await axios.post(`${API}/auth/resend-code`, { email })).data;
+  const forgotPassword = async (email) => (await axios.post(`${API}/auth/forgot-password`, { email })).data;
+  const resetPassword = async (email, code, new_password) =>
+    (await axios.post(`${API}/auth/reset-password`, { email, code, new_password })).data;
 
   const logout = async () => {
     try {
@@ -60,7 +73,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, checkAuth, setUser }}>
+    <AuthContext.Provider value={{ user, loading, login, register, verifyEmail, resendCode, forgotPassword, resetPassword, logout, checkAuth, setUser }}>
       {children}
     </AuthContext.Provider>
   );

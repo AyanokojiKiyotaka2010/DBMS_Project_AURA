@@ -100,10 +100,17 @@ def resolve_scope(user: dict, p: dict) -> dict:
     return scope
 
 
-def _student_filter(scope: dict, alias: str = "u"):
+def _roles(user: dict, p: dict) -> tuple:
+    """Student roles; Administrators / Professors may also include the graduated batch (include_alumni=true)."""
+    if str(p.get("include_alumni", "")).lower() in ("1", "true", "yes", "on") and user.get("role") in ("Administrator", "Professor"):
+        return STUDENT_ROLES + ("Alumni",)
+    return STUDENT_ROLES
+
+
+def _student_filter(scope: dict, alias: str = "u", roles: tuple = STUDENT_ROLES):
     """WHERE fragments restricting students (alias.*) to the caller's scope."""
-    sql = [f"{alias}.role IN ({_ROLE_IN})"]
-    args = list(STUDENT_ROLES)
+    sql = [f"{alias}.role IN ({','.join(['%s'] * len(roles))})"]
+    args = list(roles)
     for key in ("department_id", "year_id", "division_id"):
         if scope.get(key) is not None:
             sql.append(f"{alias}.{key} = %s")
@@ -141,7 +148,7 @@ async def cgpa_report(user: dict, p: dict) -> dict:
     below = _num(p, "cgpa_below", lo=0, hi=10)
     above = _num(p, "cgpa_above", lo=0, hi=10)
 
-    where, args = _student_filter(scope)
+    where, args = _student_filter(scope, roles=_roles(user, p))
     if semester is not None:
         where.append("c.semester = %s")
         args.append(semester)
@@ -246,7 +253,7 @@ async def course_average_report(user: dict, p: dict) -> dict:
     if course_id is not None:
         await _course_in_scope(course_id, scope)
 
-    where, args = _student_filter(scope)
+    where, args = _student_filter(scope, roles=_roles(user, p))
     # restrict the *course* side to the caller's department as well
     if scope.get("department_id") is not None:
         where.append("c.department_id = %s")
@@ -303,7 +310,7 @@ async def backlog_report(user: dict, p: dict) -> dict:
     if course_id is not None:
         await _course_in_scope(course_id, scope)
 
-    where, args = _student_filter(scope)
+    where, args = _student_filter(scope, roles=_roles(user, p))
     where.append("r.status = 'FAIL'")
     if semester is not None:
         where.append("c.semester = %s")
@@ -358,7 +365,7 @@ async def attendance_below_report(user: dict, p: dict) -> dict:
     if course_id is not None:
         await _course_in_scope(course_id, scope)
 
-    where, args = _student_filter(scope)
+    where, args = _student_filter(scope, roles=_roles(user, p))
     if semester is not None:
         where.append("c.semester = %s")
         args.append(semester)
@@ -408,3 +415,22 @@ async def attendance_below_report(user: dict, p: dict) -> dict:
             "semester": semester, "course_id": course_id,
             "summary": {"rows": len(out), "students": len({r["student_id"] for r in out})},
             "rows": out}
+
+
+# --------------------------------------------------------------------------- what data exists
+async def coverage_report(user: dict, p: dict) -> dict:
+    """Which (current year, semester) combinations actually hold results — drives the Semester dropdown.
+    Results are tied to the semester they were earned in, so e.g. Semester 4 data belongs to students who are
+    now one year further on."""
+    scope = resolve_scope(user, p)
+    where, args = _student_filter(scope, roles=_roles(user, p))
+    rows = await db.all(
+        "SELECT u.year_id, y.label AS year, y.level_no AS year_no, c.semester, COUNT(DISTINCT u.id) AS students "
+        "FROM users u JOIN enrollments e ON e.student_id = u.id JOIN courses c ON c.id = e.course_id "
+        "JOIN results r ON r.enrollment_id = e.id LEFT JOIN academic_years y ON y.id = u.year_id "
+        "WHERE " + " AND ".join(where) + " "
+        "GROUP BY u.year_id, y.label, y.level_no, c.semester ORDER BY y.level_no, c.semester",
+        tuple(args))
+    return {"report": "coverage", "scope": scope,
+            "rows": [{"year_id": r["year_id"], "year": r["year"] or "Graduated", "semester": r["semester"],
+                      "students": int(r["students"])} for r in rows]}

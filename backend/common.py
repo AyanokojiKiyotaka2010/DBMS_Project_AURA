@@ -84,7 +84,7 @@ def parse_iso(s):
 
 # ---------------------------------------------------------------- users
 USER_SQL = (
-    "SELECT u.id, u.name, u.email, u.password_hash, u.role, u.requested_role, u.department_id, u.year_id, u.division_id, "
+    "SELECT u.id, u.name, u.email, u.email_verified, u.password_hash, u.role, u.requested_role, u.department_id, u.year_id, u.division_id, "
     "       u.roll_no, u.avatar, u.created_at, "
     "       d.name AS department_name, y.label AS year_label, dv.name AS division_name "
     "FROM users u "
@@ -104,6 +104,7 @@ def user_public(u: dict) -> dict:
         "user_id": str(u["id"]),
         "name": u.get("name"),
         "email": u.get("email"),
+        "email_verified": bool(u.get("email_verified")),
         "role": role,
         "requested_role": u.get("requested_role") or "",
         "department": u.get("department_name") or ("Administration" if role == "Administrator" else ""),

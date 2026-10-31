@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useStructure } from "../lib/campus";
+import VerifyPanel from "./VerifyPanel";
 import { toast } from "sonner";
 import { Lock, EnvelopeSimple, User, GraduationCap, IdentificationCard, Sparkle } from "@phosphor-icons/react";
 
@@ -22,6 +23,8 @@ export default function AuthPage() {
   const [rollNo, setRollNo] = useState("");
   const [role, setRole] = useState("Student");
   const [loading, setLoading] = useState(false);
+  const [stage, setStage] = useState(null); // null | "verify" | "forgot" | "reset"
+  const [emailSent, setEmailSent] = useState(true);
 
   const { login, register } = useAuth();
 
@@ -35,10 +38,22 @@ export default function AuthPage() {
         toast.success("Welcome back to AURA");
       } else {
         const num = (v) => (v === "" ? null : Number(v));
-        await register(name, email, password, num(departmentId), role, num(yearId), num(divisionId), rollNo.trim() || null);
-        toast.success(`Account created — welcome, ${name}`);
+        const res = await register(name, email, password, num(departmentId), role, num(yearId), num(divisionId), rollNo.trim() || null);
+        if (res?.verification_required) {
+          setEmailSent(res.email_sent !== false);
+          setStage("verify");
+          toast.success("Almost there — check your email for the 6-digit code");
+        } else {
+          toast.success(`Account created — welcome, ${name}`);
+        }
       }
     } catch (err) {
+      if (isLogin && err.response?.status === 403) {          // account exists but the email was never verified
+        setEmailSent(true);
+        setStage("verify");
+        toast.error("Please verify your email first — enter the code we sent, or ask for a new one");
+        return;
+      }
       const detail = err.response?.data?.detail;
       const msg =
         typeof detail === "string"
@@ -104,7 +119,7 @@ export default function AuthPage() {
           </div>
 
           <div className="text-[11px] text-paper/60 font-mono">
-            Secured · JWT + Bcrypt · Encrypted anonymous IDs
+            Secured · JWT + Bcrypt · Verified emails · Anonymous askers
           </div>
         </div>
       </div>
@@ -112,6 +127,9 @@ export default function AuthPage() {
       {/* Right panel — form */}
       <div className="flex-1 flex items-center justify-center p-6 md:p-12">
         <div className="w-full max-w-md">
+          {stage ? (
+            <VerifyPanel stage={stage} setStage={setStage} email={email} setEmail={setEmail} emailSent={emailSent} />
+          ) : (<>
           <div className="flex items-center justify-between mb-8">
             <div>
               <div className="text-[11px] uppercase tracking-[0.22em] text-brand font-semibold">
@@ -180,6 +198,14 @@ export default function AuthPage() {
                 />
               </div>
             </div>
+            {isLogin && (
+              <div className="text-right -mt-2">
+                <button type="button" data-testid="auth-forgot-btn" onClick={() => setStage("forgot")}
+                  className="text-xs text-brand-deep hover:text-brand font-semibold underline underline-offset-4">
+                  Forgot password?
+                </button>
+              </div>
+            )}
 
             {!isLogin && (
               <div className="grid grid-cols-2 gap-4">
@@ -296,7 +322,7 @@ export default function AuthPage() {
               {isLogin ? "New here? Create an account →" : "Already a member? Sign in"}
             </button>
           </div>
-
+          </>)}
         </div>
       </div>
     </div>
