@@ -166,6 +166,8 @@ async def cgpa_report(user: dict, p: dict) -> dict:
     )
     students = []
     for r in rows:
+        if r["cgpa"] is None:                      # only zero-credit courses -> no GPA to report
+            continue
         cg = _f(r["cgpa"])
         if semester is not None:
             if below is not None and not cg < below:

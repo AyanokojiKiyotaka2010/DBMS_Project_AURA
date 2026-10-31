@@ -4,7 +4,8 @@ import { useStructure } from "../lib/campus";
 import { toast } from "sonner";
 import { Lock, EnvelopeSimple, User, GraduationCap, IdentificationCard, Sparkle } from "@phosphor-icons/react";
 
-const ROLES = ["Student", "Senior", "Alumni"]; // Professor / CR / DCR are granted by an administrator
+const ROLES = ["Student", "Senior", "Alumni", "Professor", "CR", "DCR", "Convener"];
+const NEEDS_APPROVAL = ["Professor", "CR", "DCR", "Convener"]; // account starts as Student until an administrator approves
 
 const HERO_IMG =
   "https://images.unsplash.com/photo-1758270704763-22072a90d3b6?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1MDV8MHwxfHNlYXJjaHwxfHxkaXZlcnNlJTIwY29sbGVnZSUyMHN0dWRlbnRzJTIwc3R1ZHlpbmclMjBjYW1wdXMlMjB3YXJtJTIwbGlnaHR8ZW58MHx8fHwxNzg2MDUyMzU2fDA&ixlib=rb-4.1.0&q=85";
@@ -24,11 +25,6 @@ export default function AuthPage() {
 
   const { login, register } = useAuth();
 
-  const fillDemo = (demoEmail, demoPass) => {
-    setEmail(demoEmail);
-    setPassword(demoPass);
-    setIsLogin(true);
-  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -246,6 +242,12 @@ export default function AuthPage() {
                     className="w-full bg-paper-card border border-edge-light rounded-xl px-3 py-3 text-sm text-ink outline-none"
                   />
                 </div>
+                {NEEDS_APPROVAL.includes(role) && (
+                  <div className="col-span-2 text-xs text-ink-2 bg-paper-sidebar rounded-lg px-3 py-2" data-testid="auth-role-approval">
+                    {role} accounts are approved by the administrator. You can sign in right away; you'll be a Student
+                    until your request is approved.
+                  </div>
+                )}
                 {structure.loaded && structure.departments.length === 0 && (
                   <div className="col-span-2 text-xs text-brand-deep bg-brand/10 rounded-lg px-3 py-2" data-testid="auth-no-structure">
                     No departments have been set up yet. Ask the administrator to add them (Academic Setup).
@@ -295,34 +297,6 @@ export default function AuthPage() {
             </button>
           </div>
 
-          {isLogin && (
-            <div className="mt-8 pt-6 border-t border-edge-light">
-              <div className="text-[11px] uppercase tracking-widest text-ink-3 font-semibold mb-3">
-                Try a demo persona
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { l: "Admin", e: "admin@campus.edu", p: "admin123" },
-                  { l: "CR", e: "cr@campus.edu", p: "cr12345" },
-                  { l: "DCR", e: "dcr@campus.edu", p: "dcr12345" },
-                  { l: "Professor", e: "prof@campus.edu", p: "prof12345" },
-                  { l: "Senior", e: "senior@campus.edu", p: "senior12345" },
-                  { l: "Alumni", e: "alumni@campus.edu", p: "alumni12345" },
-                ].map((d) => (
-                  <button
-                    key={d.l}
-                    type="button"
-                    data-testid={`demo-fill-${d.l.toLowerCase()}`}
-                    onClick={() => fillDemo(d.e, d.p)}
-                    className="px-3 py-2 text-xs font-medium rounded-lg border border-edge-light bg-paper-card hover:bg-paper-sidebar text-ink-2 hover:text-ink transition-colors text-left"
-                  >
-                    <div className="font-semibold text-ink">{d.l}</div>
-                    <div className="text-[10px] font-mono text-ink-3 truncate">{d.e}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </div>

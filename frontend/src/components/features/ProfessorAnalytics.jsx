@@ -7,10 +7,18 @@ import { StatTile } from "./Dashboard";
 
 export function ProfessorAnalytics() {
   const [data, setData] = useState(null);
+  const [error, setError] = useState("");
   useEffect(() => {
-    axios.get(`${API}/analytics/professors`).then((r) => setData(r.data)).catch(() => toast.error("Failed to load"));
+    axios.get(`${API}/analytics/professors`).then((r) => setData(r.data)).catch((e) => {
+      const msg = e?.response?.data?.detail || e?.message || "Failed to load";
+      setError(String(msg));
+      toast.error("Failed to load analytics");
+    });
   }, []);
 
+  if (error) {
+    return <div className="text-sm text-brand-deep" data-testid="analytics-error">Could not load analytics: {error}</div>;
+  }
   if (!data) {
     return <div className="text-ink-3 italic text-sm animate-pulse" data-testid="analytics-loading">Loading analytics…</div>;
   }

@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS users (
   email         VARCHAR(190) NOT NULL,
   password_hash VARCHAR(100) NOT NULL,
   role          VARCHAR(20)  NOT NULL DEFAULT 'Student',
+  requested_role VARCHAR(20) NULL,                 -- role asked for at sign-up, pending administrator approval
   department_id INT NULL,
   year_id       INT NULL,
   division_id   INT NULL,

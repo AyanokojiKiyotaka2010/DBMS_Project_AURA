@@ -53,7 +53,29 @@ export function AdminPanel({ setUser }) {
                 <td className="py-3 px-4 text-ink-2">
                   {u.department}{u.year ? " · " + u.year : ""}
                 </td>
-                <td className="py-3 px-4"><RoleBadge role={u.role} /></td>
+                <td className="py-3 px-4">
+                  <RoleBadge role={u.role} />
+                  {u.requested_role && (
+                    <div className="mt-1.5 flex items-center gap-2" data-testid={`admin-request-${u.email}`}>
+                      <span className="text-[10px] font-semibold text-brand-deep bg-brand/10 rounded-full px-2 py-0.5">
+                        requests {u.requested_role}
+                      </span>
+                      <button
+                        data-testid={`admin-approve-${u.email}`}
+                        onClick={() => changeRole(u.user_id, u.requested_role)}
+                        className="text-[11px] font-semibold text-brand hover:underline"
+                      >
+                        Approve
+                      </button>
+                      <button
+                        onClick={() => changeRole(u.user_id, "Student")}
+                        className="text-[11px] text-ink-3 hover:underline"
+                      >
+                        Decline
+                      </button>
+                    </div>
+                  )}
+                </td>
                 <td className="py-3 px-4">
                   <select
                     data-testid={`admin-role-select-${u.email}`}

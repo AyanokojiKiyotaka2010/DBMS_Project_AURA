@@ -24,6 +24,7 @@ from typing import List, Optional
 
 from dotenv import load_dotenv
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Response, WebSocket, WebSocketDisconnect
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr
 from starlette.middleware.cors import CORSMiddleware
 
@@ -32,7 +33,7 @@ load_dotenv(ROOT_DIR / ".env")
 
 import db  # noqa: E402  (after load_dotenv so env vars are visible)
 from common import (  # noqa: E402
-    ALLOWED_ROLES, SELF_REGISTER_ROLES, USER_SQL, dept_id_by_name, fetch_user, from_db, get_user, hash_pw, iso,
+    ALLOWED_ROLES, REQUESTABLE_ROLES, SELF_REGISTER_ROLES, USER_SQL, dept_id_by_name, fetch_user, from_db, get_user, hash_pw, iso,
     load_attachments, now_utc, parse_iso, require_role, save_attachments, set_auth_cookies, to_db,
     user_from_token, user_public, validate_attachments, verify_pw, year_id_by_label,
 )
@@ -229,6 +230,13 @@ manager = ConnectionManager()
 
 
 # ================================================================= Auth
+@api.get("/health")
+async def health():
+    """Liveness + database check (no data returned)."""
+    await db.one("SELECT 1 AS ok")
+    return {"ok": True, "db": True}
+
+
 @api.get("/meta/structure")
 async def meta_structure():
     """Public: departments / years / divisions for the sign-up form (admin-managed)."""
@@ -238,10 +246,13 @@ async def meta_structure():
 @api.post("/auth/register")
 async def register(inp: UserRegister, response: Response):
     email = inp.email.lower().strip()
-    role = inp.role or "Student"
-    if role not in SELF_REGISTER_ROLES:
-        raise HTTPException(400, "Self-registration is limited to Student, Senior and Alumni. "
-                                 "Professor / CR / DCR roles are granted by an Administrator.")
+    wanted = inp.role or "Student"
+    if wanted in SELF_REGISTER_ROLES:
+        role, requested = wanted, None
+    elif wanted in REQUESTABLE_ROLES:
+        role, requested = "Student", wanted        # starts as Student; an Administrator approves the request
+    else:
+        raise HTTPException(400, "Choose Student, Senior, Alumni, Professor, CR, DCR or Convener")
     if await db.one("SELECT id FROM users WHERE email=%s", (email,)):
         raise HTTPException(400, "Email already registered")
 
@@ -261,9 +272,9 @@ async def register(inp: UserRegister, response: Response):
         raise HTTPException(400, "Roll number already registered")
 
     uid = await db.run(
-        "INSERT INTO users (name,email,password_hash,role,department_id,year_id,division_id,roll_no,created_at) "
-        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-        (inp.name.strip(), email, hash_pw(inp.password), role, inp.department_id, inp.year_id,
+        "INSERT INTO users (name,email,password_hash,role,requested_role,department_id,year_id,division_id,roll_no,created_at) "
+        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+        (inp.name.strip(), email, hash_pw(inp.password), role, requested, inp.department_id, inp.year_id,
          inp.division_id, roll, to_db(now_utc())),
     )
     set_auth_cookies(response, uid, email)
@@ -284,6 +295,23 @@ async def login(inp: UserLogin, response: Response):
 async def logout(response: Response):
     response.delete_cookie("access_token", path="/")
     response.delete_cookie("refresh_token", path="/")
+    return {"ok": True}
+
+
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str
+
+
+@api.post("/auth/change-password")
+async def change_password(inp: PasswordChange, user=Depends(get_user)):
+    """Change your own password (use /docs on the backend if the UI has no screen for it)."""
+    if len(inp.new_password) < 8:
+        raise HTTPException(400, "New password must be at least 8 characters")
+    row = await fetch_user("u.id=%s", (int(user["user_id"]),))
+    if not row or not verify_pw(inp.current_password, row["password_hash"]):
+        raise HTTPException(401, "Current password is wrong")
+    await db.run("UPDATE users SET password_hash=%s WHERE id=%s", (hash_pw(inp.new_password), int(user["user_id"])))
     return {"ok": True}
 
 
@@ -677,7 +705,7 @@ async def admin_set_role(uid: int, inp: RoleUpdate, user=Depends(get_user)):
         raise HTTPException(400, "Invalid role")
     if not await db.one("SELECT id FROM users WHERE id=%s", (uid,)):
         raise HTTPException(404, "User not found")
-    await db.run("UPDATE users SET role=%s WHERE id=%s", (inp.role, uid))
+    await db.run("UPDATE users SET role=%s, requested_role=NULL WHERE id=%s", (inp.role, uid))
     r = await fetch_user("u.id=%s", (uid,))
     return {"ok": True, "user": user_public(r), "self_updated": user["user_id"] == str(uid)}
 
@@ -876,6 +904,20 @@ api.include_router(academics.router)
 api.include_router(reports.router)
 api.include_router(imports.router)
 app.include_router(api)
+
+@app.middleware("http")
+async def json_errors(request, call_next):
+    """Turn crashes into a JSON 500 (with CORS headers, since CORS wraps this) and log the traceback,
+    so the UI shows a message instead of hanging and the Render log shows the real cause."""
+    try:
+        return await call_next(request)
+    except Exception as e:                                    # noqa: BLE001
+        logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+        detail = f"Server error ({type(e).__name__})"
+        if os.environ.get("DEBUG_ERRORS", "").lower() in ("1", "true", "yes"):
+            detail += f": {str(e)[:300]}"
+        return JSONResponse(status_code=500, content={"detail": detail})
+
 
 _origins = [o.strip().rstrip("/") for o in os.environ.get("FRONTEND_URL", "").split(",") if o.strip()]
 app.add_middleware(

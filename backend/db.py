@@ -154,6 +154,9 @@ async def ensure_schema():
 
 
 async def _migrate():
+    # v2 -> v3: role requests made at sign-up
+    if not await all("SHOW COLUMNS FROM users LIKE 'requested_role'"):
+        await run("ALTER TABLE users ADD COLUMN requested_role VARCHAR(20) NULL AFTER role")
     # v1 -> v2: grade-only results (marks optional)
     await run("ALTER TABLE results MODIFY marks_obtained DECIMAL(6,2) NULL, MODIFY percentage DECIMAL(5,2) NULL")
     # v1 -> v2: course codes are unique per department (EC106 is taught to many branches)

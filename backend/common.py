@@ -13,7 +13,8 @@ JWT_SECRET = os.environ.get("JWT_SECRET", "aura_campus_secret_change_me")
 JWT_ALG = "HS256"
 
 ALLOWED_ROLES = {"Student", "CR", "DCR", "Senior", "Alumni", "Professor", "Convener", "Administrator"}
-SELF_REGISTER_ROLES = {"Student", "Senior", "Alumni"}      # privileged roles are granted by an Administrator
+SELF_REGISTER_ROLES = {"Student", "Senior", "Alumni"}      # take effect immediately
+REQUESTABLE_ROLES = {"Professor", "CR", "DCR", "Convener"}   # sign-up creates a Student + a pending request an Administrator approves
 STUDENT_ROLES = ("Student", "CR", "DCR")
 
 
@@ -83,7 +84,7 @@ def parse_iso(s):
 
 # ---------------------------------------------------------------- users
 USER_SQL = (
-    "SELECT u.id, u.name, u.email, u.password_hash, u.role, u.department_id, u.year_id, u.division_id, "
+    "SELECT u.id, u.name, u.email, u.password_hash, u.role, u.requested_role, u.department_id, u.year_id, u.division_id, "
     "       u.roll_no, u.avatar, u.created_at, "
     "       d.name AS department_name, y.label AS year_label, dv.name AS division_name "
     "FROM users u "
@@ -104,6 +105,7 @@ def user_public(u: dict) -> dict:
         "name": u.get("name"),
         "email": u.get("email"),
         "role": role,
+        "requested_role": u.get("requested_role") or "",
         "department": u.get("department_name") or ("Administration" if role == "Administrator" else ""),
         "year": u.get("year_label") or "",
         "division": u.get("division_name") or "",
