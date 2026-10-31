@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from common import get_user, require_role
+from importer.clubs import load_clubs
 from importer.loader import load
 from importer.result_sheets import GRADE_POINTS
 
@@ -61,3 +62,36 @@ async def import_sheet(inp: ImportIn, user=Depends(get_user)):
                 raise HTTPException(400, f"bad grade {code!r}={letter!r} for {st['admission_no']}")
     stats = await load([(inp.folder_year, sh)], graduates=inp.graduates, log=lambda *a: None)
     return {"ok": True, "stats": stats}
+
+
+class PersonIn(BaseModel):
+    person_name: str = Field(min_length=1, max_length=120)
+    title: str = Field(min_length=1, max_length=120)
+    person_type: str = "Student"
+    academic_year: str = Field(default="", max_length=40)
+
+
+class ClubItemIn(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+    category: str = Field(default="", max_length=80)
+    entity_type: str = Field(default="", max_length=120)
+    description: str = ""
+    website: str = Field(default="", max_length=500)
+    instagram: str = Field(default="", max_length=500)
+    linkedin: str = Field(default="", max_length=500)
+    people: List[PersonIn] = Field(default=[], max_length=400)
+
+
+class ClubsImportIn(BaseModel):
+    clubs: List[ClubItemIn] = Field(max_length=200)
+
+
+@router.post("/admin/import-clubs")
+async def import_clubs(inp: ClubsImportIn, user=Depends(get_user)):
+    require_role(user, ["Administrator"])
+    items = [c.model_dump() for c in inp.clubs]
+    for c in items:
+        for p in c["people"]:
+            if p["person_type"] not in ("Student", "Faculty"):
+                raise HTTPException(400, f"bad person_type {p['person_type']!r}")
+    return {"ok": True, "stats": await load_clubs(items, created_by=int(user["user_id"]))}

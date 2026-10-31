@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback } from "react";
 import axios from "axios";
+import { setAuthToken } from "../lib/campus";
 
 const AuthContext = createContext(null);
 
@@ -15,6 +16,7 @@ export const AuthProvider = ({ children }) => {
       const response = await axios.get(`${API}/auth/me`, { withCredentials: true });
       setUser(response.data);
     } catch (e) {
+      if (e?.response?.status === 401) setAuthToken(null);
       setUser(null);
     } finally {
       setLoading(false);
@@ -31,6 +33,7 @@ export const AuthProvider = ({ children }) => {
       { email, password },
       { withCredentials: true }
     );
+    setAuthToken(response.data.token);
     setUser(response.data.user || response.data);
     return response.data;
   };
@@ -41,6 +44,7 @@ export const AuthProvider = ({ children }) => {
       { name, email, password, department_id, role, year_id, division_id, roll_no },
       { withCredentials: true }
     );
+    setAuthToken(response.data.token);
     setUser(response.data.user || response.data);
     return response.data;
   };
@@ -51,6 +55,7 @@ export const AuthProvider = ({ children }) => {
     } catch (e) {
       // ignore
     }
+    setAuthToken(null);
     setUser(null);
   };
 

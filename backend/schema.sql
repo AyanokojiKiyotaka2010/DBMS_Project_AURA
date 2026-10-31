@@ -230,6 +230,10 @@ CREATE TABLE IF NOT EXISTS clubs (
   category    VARCHAR(80)  NOT NULL DEFAULT '',
   description TEXT NOT NULL,
   cover       VARCHAR(1000) NOT NULL DEFAULT '',
+  entity_type VARCHAR(120) NOT NULL DEFAULT '',
+  website     VARCHAR(500) NOT NULL DEFAULT '',
+  instagram   VARCHAR(500) NOT NULL DEFAULT '',
+  linkedin    VARCHAR(500) NOT NULL DEFAULT '',
   created_by  INT NULL,
   created_at  DATETIME NOT NULL,
   UNIQUE (name),
@@ -241,6 +245,18 @@ CREATE TABLE IF NOT EXISTS club_cells (
   club_id INT NOT NULL,
   name    VARCHAR(80) NOT NULL,
   UNIQUE (club_id, name),
+  FOREIGN KEY (club_id) REFERENCES clubs(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Student leaders, faculty coordinators and published members of a club (names as published).
+CREATE TABLE IF NOT EXISTS club_people (
+  id            INT AUTO_INCREMENT PRIMARY KEY,
+  club_id       INT NOT NULL,
+  person_name   VARCHAR(120) NOT NULL,
+  title         VARCHAR(120) NOT NULL,
+  person_type   VARCHAR(10)  NOT NULL DEFAULT 'Student',      -- Student | Faculty
+  academic_year VARCHAR(40)  NOT NULL DEFAULT '',
+  CONSTRAINT uq_club_person UNIQUE (club_id, person_name, title, person_type),
   FOREIGN KEY (club_id) REFERENCES clubs(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 

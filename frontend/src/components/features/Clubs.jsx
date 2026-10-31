@@ -6,6 +6,7 @@ import { TactileCard, SectionHeading } from "../CampusUI";
 import { Books, ArrowUpRight, Plus, Trash } from "@phosphor-icons/react";
 import { Field, Btn, inputCls, errMsg } from "./shared";
 
+const EMPTY_PERSON = { person_name: "", title: "", person_type: "Student", academic_year: "" };
 const EMPTY = { name: "", category: "", description: "", cover: "", cells: "" };
 
 export function Clubs({ user }) {
@@ -16,6 +17,7 @@ export function Clubs({ user }) {
   const [form, setForm] = useState(EMPTY);
   const [cellDraft, setCellDraft] = useState({});
   const [archDraft, setArchDraft] = useState({});
+  const [personDraft, setPersonDraft] = useState({});
 
   const load = () => axios.get(`${API}/clubs`).then((r) => setClubs(r.data)).catch(() => {});
   useEffect(() => { load(); }, []);
@@ -49,6 +51,19 @@ export function Clubs({ user }) {
       replace((await axios.post(`${API}/clubs/${c.id}/cells`, { name })).data);
       setCellDraft((p) => ({ ...p, [c.id]: "" }));
     } catch (err) { toast.error(errMsg(err)); }
+  };
+
+  const addPerson = async (c) => {
+    const d = personDraft[c.id] || EMPTY_PERSON;
+    if (!(d.person_name || "").trim() || !(d.title || "").trim()) return toast.error("Name and title are required");
+    try {
+      replace((await axios.post(`${API}/clubs/${c.id}/people`, { ...EMPTY_PERSON, ...d })).data);
+      setPersonDraft((p) => ({ ...p, [c.id]: EMPTY_PERSON }));
+    } catch (err) { toast.error(errMsg(err)); }
+  };
+  const removePerson = async (c, pid) => {
+    try { replace((await axios.delete(`${API}/clubs/${c.id}/people/${pid}`)).data); }
+    catch (err) { toast.error(errMsg(err)); }
   };
 
   const addYear = async (c) => {
@@ -112,7 +127,15 @@ export function Clubs({ user }) {
               )}
             </div>
             <div className="p-5">
+              {c.entity_type && <div className="text-[11px] text-ink-3 mb-1">{c.entity_type}</div>}
               <p className="text-sm text-ink-2 leading-relaxed">{c.description}</p>
+              {(c.website || c.instagram || c.linkedin) && (
+                <div className="mt-2 flex gap-3 text-xs font-semibold">
+                  {c.website && <a href={c.website} target="_blank" rel="noreferrer" className="text-brand-deep hover:underline">Website</a>}
+                  {c.instagram && <a href={c.instagram} target="_blank" rel="noreferrer" className="text-brand-deep hover:underline">Instagram</a>}
+                  {c.linkedin && <a href={c.linkedin} target="_blank" rel="noreferrer" className="text-brand-deep hover:underline">LinkedIn</a>}
+                </div>
+              )}
               <div className="mt-3 flex flex-wrap gap-2">
                 {(c.cells || []).map((cell) => (
                   <span key={cell} className="text-[10px] font-semibold px-2 py-0.5 rounded-full border border-edge-light bg-paper-sidebar text-ink-2">#{cell}</span>
@@ -131,11 +154,43 @@ export function Clubs({ user }) {
                 className="mt-4 text-xs font-semibold text-brand-deep hover:text-brand flex items-center gap-1"
               >
                 <Books size={14} />
-                {expanded === c.id ? "Hide archives" : "Event archive"}
+                {expanded === c.id ? "Hide details" : `Team & archive${(c.people || []).length ? ` (${c.people.length})` : ""}`}
                 <ArrowUpRight size={12} />
               </button>
               {expanded === c.id && (
                 <div className="mt-4 space-y-3">
+                  {["Student", "Faculty"].map((kind) => {
+                    const list = (c.people || []).filter((p) => p.type === kind);
+                    if (!list.length) return null;
+                    return (
+                      <div key={kind} data-testid={`club-people-${kind.toLowerCase()}-${c.id}`}>
+                        <div className="text-[10px] uppercase tracking-[0.2em] font-semibold text-ink-3 mb-1.5">
+                          {kind === "Student" ? "Student leadership" : "Faculty coordinators"}
+                        </div>
+                        <ul className="space-y-1">
+                          {list.map((p) => (
+                            <li key={p.id} className="flex items-center justify-between text-sm">
+                              <span><span className="font-medium">{p.name}</span> <span className="text-ink-3">· {p.title}{p.academic_year ? ` · ${p.academic_year}` : ""}</span></span>
+                              {canManage && <button onClick={() => removePerson(c, p.id)} className="text-ink-3 hover:text-brand"><Trash size={12} /></button>}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    );
+                  })}
+                  {canManage && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <input className={inputCls} placeholder="Person name" value={personDraft[c.id]?.person_name || ""}
+                        onChange={(e) => setPersonDraft((p) => ({ ...p, [c.id]: { ...EMPTY_PERSON, ...p[c.id], person_name: e.target.value } }))} />
+                      <input className={inputCls} placeholder="Title (Head, Co-Head, Member…)" value={personDraft[c.id]?.title || ""}
+                        onChange={(e) => setPersonDraft((p) => ({ ...p, [c.id]: { ...EMPTY_PERSON, ...p[c.id], title: e.target.value } }))} />
+                      <select className={inputCls} value={personDraft[c.id]?.person_type || "Student"}
+                        onChange={(e) => setPersonDraft((p) => ({ ...p, [c.id]: { ...EMPTY_PERSON, ...p[c.id], person_type: e.target.value } }))}>
+                        <option>Student</option><option>Faculty</option>
+                      </select>
+                      <Btn variant="ghost" type="button" data-testid={`club-person-add-${c.id}`} onClick={() => addPerson(c)}>Add person</Btn>
+                    </div>
+                  )}
                   {(c.archives || []).length === 0 && <div className="text-xs text-ink-3">No archive years recorded yet.</div>}
                   <div className="grid grid-cols-5 gap-2">
                     {(c.archives || []).map((y) => (

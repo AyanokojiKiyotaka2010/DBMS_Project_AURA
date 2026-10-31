@@ -129,11 +129,14 @@ async def user_from_token(token: str):
 
 
 async def get_user(request: Request) -> dict:
-    token = request.cookies.get("access_token")
+    # Authorization header first: the cookie is blocked by many browsers when the site (Vercel) and the
+    # API (Render) are on different domains, and a stale cookie must never override an explicit token.
+    token = None
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        token = auth[7:]
     if not token:
-        auth = request.headers.get("Authorization", "")
-        if auth.startswith("Bearer "):
-            token = auth[7:]
+        token = request.cookies.get("access_token")
     if not token:
         raise HTTPException(401, "Not authenticated")
     try:

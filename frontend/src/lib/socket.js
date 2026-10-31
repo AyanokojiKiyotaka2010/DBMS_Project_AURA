@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { BACKEND_URL } from "./campus";
+import { BACKEND_URL, getAuthToken } from "./campus";
 
 // Convert https:// -> wss:// and http:// -> ws://
 function wsUrl(path) {
@@ -28,7 +28,8 @@ export function useCampusSocket(onMessage) {
     const connect = () => {
       if (closed) return;
       try {
-        socket = new WebSocket(wsUrl("/api/ws"));
+        const tok = getAuthToken();
+        socket = new WebSocket(wsUrl("/api/ws") + (tok ? `?token=${encodeURIComponent(tok)}` : ""));
       } catch {
         return;
       }

@@ -185,6 +185,13 @@ class CellCreate(BaseModel):
     name: str
 
 
+class PersonCreate(BaseModel):
+    person_name: str
+    title: str
+    person_type: str = "Student"
+    academic_year: str = ""
+
+
 # ---------------------------------------------------------------- websocket manager
 class ConnectionManager:
     """Tracks live WS connections and broadcasts campus-wide events."""
@@ -277,8 +284,8 @@ async def register(inp: UserRegister, response: Response):
         (inp.name.strip(), email, hash_pw(inp.password), role, requested, inp.department_id, inp.year_id,
          inp.division_id, roll, to_db(now_utc())),
     )
-    set_auth_cookies(response, uid, email)
-    return {"user": user_public(await fetch_user("u.id=%s", (uid,)))}
+    token = set_auth_cookies(response, uid, email)
+    return {"user": user_public(await fetch_user("u.id=%s", (uid,))), "token": token}
 
 
 @api.post("/auth/login")
@@ -287,8 +294,8 @@ async def login(inp: UserLogin, response: Response):
     u = await fetch_user("u.email=%s", (email,))
     if not u or not verify_pw(inp.password, u["password_hash"]):
         raise HTTPException(401, "Invalid email or password")
-    set_auth_cookies(response, u["id"], email)
-    return {"user": user_public(u)}
+    token = set_auth_cookies(response, u["id"], email)
+    return {"user": user_public(u), "token": token}
 
 
 @api.post("/auth/logout")
@@ -496,18 +503,24 @@ CLUB_MANAGERS = ["Administrator", "Convener", "Professor"]
 
 
 async def _clubs_out(where: str = "", args: tuple = ()) -> list:
-    clubs = await db.all("SELECT id, name, category, description, cover, created_at FROM clubs "
-                         + where + " ORDER BY name", args)
+    clubs = await db.all("SELECT id, name, category, entity_type, description, cover, website, instagram, linkedin "
+                         "FROM clubs " + where + " ORDER BY name", args)
     if not clubs:
         return []
     ids = tuple(c["id"] for c in clubs)
-    cells, arch = {}, {}
+    cells, arch, people = {}, {}, {}
     for r in await db.all(f"SELECT id, club_id, name FROM club_cells WHERE club_id IN ({_in(len(ids))}) ORDER BY id", ids):
         cells.setdefault(r["club_id"], []).append(r["name"])
     for r in await db.all(f"SELECT club_id, year, events FROM club_archives WHERE club_id IN ({_in(len(ids))}) ORDER BY year", ids):
         arch.setdefault(r["club_id"], []).append({"year": r["year"], "events": r["events"]})
-    return [{"id": c["id"], "name": c["name"], "category": c["category"], "description": c["description"],
-             "cover": c["cover"], "cells": cells.get(c["id"], []), "archives": arch.get(c["id"], [])} for c in clubs]
+    for r in await db.all(f"SELECT id, club_id, person_name, title, person_type, academic_year FROM club_people "
+                          f"WHERE club_id IN ({_in(len(ids))}) ORDER BY person_type DESC, id", ids):
+        people.setdefault(r["club_id"], []).append({"id": r["id"], "name": r["person_name"], "title": r["title"],
+                                                    "type": r["person_type"], "academic_year": r["academic_year"]})
+    return [{"id": c["id"], "name": c["name"], "category": c["category"], "entity_type": c["entity_type"],
+             "description": c["description"], "cover": c["cover"], "website": c["website"],
+             "instagram": c["instagram"], "linkedin": c["linkedin"], "cells": cells.get(c["id"], []),
+             "archives": arch.get(c["id"], []), "people": people.get(c["id"], [])} for c in clubs]
 
 
 @api.get("/clubs")
@@ -581,6 +594,29 @@ async def remove_cell(club_id: int, name: str, user=Depends(get_user)):
     require_role(user, CLUB_MANAGERS)
     await db.run("DELETE FROM club_cells WHERE club_id=%s AND name=%s", (club_id, name))
     return {"ok": True}
+
+
+@api.post("/clubs/{club_id}/people")
+async def add_person(club_id: int, inp: PersonCreate, user=Depends(get_user)):
+    """Add a leader / coordinator / member (e.g. Head, Co-Head, Faculty Coordinator) to a club."""
+    require_role(user, CLUB_MANAGERS)
+    name, title = inp.person_name.strip()[:120], inp.title.strip()[:120]
+    if not name or not title or inp.person_type not in ("Student", "Faculty"):
+        raise HTTPException(400, "Name, title and a type of Student or Faculty are required")
+    if not await db.one("SELECT id FROM clubs WHERE id=%s", (club_id,)):
+        raise HTTPException(404, "Club not found")
+    if not await db.one("SELECT id FROM club_people WHERE club_id=%s AND person_name=%s AND title=%s AND person_type=%s",
+                        (club_id, name, title, inp.person_type)):
+        await db.run("INSERT INTO club_people (club_id,person_name,title,person_type,academic_year) VALUES (%s,%s,%s,%s,%s)",
+                     (club_id, name, title, inp.person_type, inp.academic_year.strip()[:40]))
+    return (await _clubs_out("WHERE id=%s", (club_id,)))[0]
+
+
+@api.delete("/clubs/{club_id}/people/{person_id}")
+async def remove_person(club_id: int, person_id: int, user=Depends(get_user)):
+    require_role(user, CLUB_MANAGERS)
+    await db.run("DELETE FROM club_people WHERE id=%s AND club_id=%s", (person_id, club_id))
+    return (await _clubs_out("WHERE id=%s", (club_id,)))[0]
 
 
 @api.post("/clubs/{club_id}/archives")

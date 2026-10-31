@@ -154,6 +154,10 @@ async def ensure_schema():
 
 
 async def _migrate():
+    # v3 -> v4: club details
+    for col, ddl in [("entity_type", "VARCHAR(120)"), ("website", "VARCHAR(500)"), ("instagram", "VARCHAR(500)"), ("linkedin", "VARCHAR(500)")]:
+        if not await all(f"SHOW COLUMNS FROM clubs LIKE '{col}'"):
+            await run(f"ALTER TABLE clubs ADD COLUMN {col} {ddl} NOT NULL DEFAULT ''")
     # v2 -> v3: role requests made at sign-up
     if not await all("SHOW COLUMNS FROM users LIKE 'requested_role'"):
         await run("ALTER TABLE users ADD COLUMN requested_role VARCHAR(20) NULL AFTER role")

@@ -273,6 +273,17 @@ def test_imported_grade_only_results_and_official_cgpa():
     assert ca["rows"][0]["avg_marks"] is None and ca["rows"][0]["avg_grade_point"] is not None
 
 
+def test_club_import_is_idempotent():
+    from importer.clubs import load_clubs
+    c = sqlite_db.install(db)
+    item = {"name": "Test Club", "category": "Tech", "entity_type": "Chapter", "description": "d",
+            "people": [{"person_name": "A B", "title": "Head", "person_type": "Student", "academic_year": "2026"},
+                       {"person_name": "Dr C", "title": "Chairperson", "person_type": "Faculty"}]}
+    assert run(load_clubs([item])) == {"clubs_new": 1, "clubs_updated": 0, "people_new": 2}
+    assert run(load_clubs([item])) == {"clubs_new": 0, "clubs_updated": 1, "people_new": 0}
+    assert c.all("SELECT count(*) n FROM club_people")[0]["n"] == 2
+
+
 if __name__ == "__main__":
     n = 0
     for name, fn in sorted(globals().items()):

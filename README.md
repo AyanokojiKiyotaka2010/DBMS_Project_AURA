@@ -78,3 +78,18 @@ python import_results.py C:\path\to\btech               # real import (run it on
 - Imported students have placeholder e-mails (`<admission-no>@import.invalid`) and cannot log in; Administrators /
   Professors see them in reports. Course names are read from truncated PDF headers — fix any odd ones in Academic Setup.
 - **Do not commit the PDFs or publish this data** (`btech/` and `*.pdf` are in `.gitignore`).
+
+## Importing the clubs directory (xlsx)
+```bash
+pip install openpyxl
+cd backend
+python import_clubs.py "C:\path\SVNIT_Clubs_Chapters_Directory.xlsx" --dry-run
+python import_clubs.py "C:\path\SVNIT_Clubs_Chapters_Directory.xlsx" --upload https://<backend>.onrender.com --email ADMIN_EMAIL --password ADMIN_PASSWORD
+```
+Creates 35 clubs with category, links, student leaders, published members and faculty coordinators (shown under
+"Team & archive" on each club card). Safe to repeat. Administrators, Conveners and Professors can add or remove people
+and clubs in the UI afterwards.
+
+## Auth note
+The frontend and API live on different domains (Vercel / Render), so login also returns a token that the app stores and
+sends as `Authorization: Bearer …` (cookies alone are blocked by many browsers).

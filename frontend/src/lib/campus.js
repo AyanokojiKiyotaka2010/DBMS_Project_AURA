@@ -5,6 +5,19 @@ export const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 export const API = `${BACKEND_URL}/api`;
 axios.defaults.withCredentials = true;
 
+// Token auth: the login cookie is blocked by many browsers when the site and the API are on different
+// domains (Vercel vs Render), so the JWT is also kept here and sent as "Authorization: Bearer".
+const TOKEN_KEY = "aura_token";
+export const getAuthToken = () => {
+  try { return localStorage.getItem(TOKEN_KEY) || ""; } catch { return ""; }
+};
+export function setAuthToken(token) {
+  try { token ? localStorage.setItem(TOKEN_KEY, token) : localStorage.removeItem(TOKEN_KEY); } catch {}
+  if (token) axios.defaults.headers.common.Authorization = `Bearer ${token}`;
+  else delete axios.defaults.headers.common.Authorization;
+}
+setAuthToken(getAuthToken());
+
 
 export const CAN_POST_ANNOUNCEMENT = (r) =>
   ["CR", "DCR", "Administrator", "Professor"].includes(r);
