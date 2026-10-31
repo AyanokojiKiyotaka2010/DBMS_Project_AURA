@@ -79,6 +79,8 @@ async def lifespan(_: FastAPI):
     await db.ensure_schema()
     await bootstrap_admin()
     await backfill_author_proofs()
+    logger.info("Email verification: %s (provider=%s, configured=%s)", "ON" if verification_enabled() else "OFF",
+                mailer.provider() or "none", mailer.configured())
     yield
     await db.close_pool()
 
@@ -290,6 +292,27 @@ class ResetPasswordIn(BaseModel):
     email: EmailStr
     code: str
     new_password: str
+
+
+@api.get("/auth/config")
+async def auth_config():
+    """Public, no secrets: shows whether e-mail verification is actually switched on."""
+    domains = [d.strip() for d in os.environ.get("ALLOWED_EMAIL_DOMAINS", "").split(",") if d.strip()]
+    return {"email_verification": verification_enabled(), "email_provider": mailer.provider() or None,
+            "email_configured": mailer.configured(), "allowed_email_domains": domains,
+            "has_api_key": bool(os.environ.get("BREVO_API_KEY") or os.environ.get("RESEND_API_KEY") or os.environ.get("SMTP_PASSWORD"))}
+
+
+class TestEmailIn(BaseModel):
+    to: EmailStr
+
+
+@api.post("/admin/test-email")
+async def admin_test_email(inp: TestEmailIn, user=Depends(get_user)):
+    """Administrator-only: send a test message and return the provider's exact error if it fails."""
+    require_role(user, ["Administrator"])
+    ok, err = await mailer.send_email_verbose(inp.to, "AURA test email", "If you can read this, AURA can send email.")
+    return {"sent": ok, "error": err, "provider": mailer.provider() or None, "from": os.environ.get("EMAIL_FROM", "")}
 
 
 @api.get("/health")

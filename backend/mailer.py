@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import smtplib
+import urllib.error
 import urllib.request
 from email.message import EmailMessage
 
@@ -29,8 +30,11 @@ def _post_json(url, headers, body):
     req = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST",
                                  headers={"Content-Type": "application/json", "Accept": "application/json",
                                           "User-Agent": UA, **headers})
-    with urllib.request.urlopen(req, timeout=20) as r:
-        r.read()
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            r.read()
+    except urllib.error.HTTPError as e:                      # keep the provider's explanation ("sender not valid", ...)
+        raise RuntimeError(f"{url.split('/')[2]} answered {e.code}: {e.read().decode(errors='replace')[:300]}") from None
 
 
 def _send_sync(to: str, subject: str, text: str, html: str = None):
@@ -58,17 +62,22 @@ def _send_sync(to: str, subject: str, text: str, html: str = None):
         raise RuntimeError("EMAIL_PROVIDER not configured")
 
 
-async def send_email(to: str, subject: str, text: str, html: str = None) -> bool:
-    """True if the provider accepted the message. Never raises."""
+async def send_email_verbose(to: str, subject: str, text: str, html: str = None):
+    """(ok, error_text). Never raises."""
     if not configured():
         log.warning("E-mail not configured; would have sent to %s: %s | %s", to, subject, text.replace("\n", " "))
-        return False
+        return False, "E-mail is not configured (EMAIL_PROVIDER and EMAIL_FROM must both be set)"
     try:
         await asyncio.to_thread(_send_sync, to, subject, text, html)
-        return True
-    except Exception:                                           # noqa: BLE001
-        log.exception("Sending e-mail to %s failed", to)
-        return False
+        return True, ""
+    except Exception as e:                                       # noqa: BLE001
+        log.error("Sending e-mail to %s failed: %s", to, e)
+        return False, str(e)[:400]
+
+
+async def send_email(to: str, subject: str, text: str, html: str = None) -> bool:
+    """True if the provider accepted the message. Never raises."""
+    return (await send_email_verbose(to, subject, text, html))[0]
 
 
 def code_message(name: str, code: str, purpose: str):
