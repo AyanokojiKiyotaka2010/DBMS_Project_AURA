@@ -42,6 +42,7 @@ from anon import author_proof, is_author  # noqa: E402
 from auth_codes import CodeError, check_code, issue_code  # noqa: E402
 import academics  # noqa: E402
 import club_membership  # noqa: E402
+import directory  # noqa: E402
 import groups  # noqa: E402
 import imports  # noqa: E402
 import reports  # noqa: E402
@@ -677,8 +678,8 @@ CLUB_MANAGERS = ["Administrator", "Convener", "Professor"]
 
 
 async def _clubs_out(where: str = "", args: tuple = ()) -> list:
-    clubs = await db.all("SELECT id, name, category, entity_type, description, cover, website, instagram, linkedin "
-                         "FROM clubs " + where + " ORDER BY name", args)
+    clubs = await db.all("SELECT id, name, category, entity_type, description, cover, website, instagram, linkedin, "
+                         "leadership_note, freshness, source_url FROM clubs " + where + " ORDER BY name", args)
     if not clubs:
         return []
     ids = tuple(c["id"] for c in clubs)
@@ -687,13 +688,19 @@ async def _clubs_out(where: str = "", args: tuple = ()) -> list:
         cells.setdefault(r["club_id"], []).append(r["name"])
     for r in await db.all(f"SELECT club_id, year, events FROM club_archives WHERE club_id IN ({_in(len(ids))}) ORDER BY year", ids):
         arch.setdefault(r["club_id"], []).append({"year": r["year"], "events": r["events"]})
-    for r in await db.all(f"SELECT id, club_id, person_name, title, person_type, academic_year FROM club_people "
-                          f"WHERE club_id IN ({_in(len(ids))}) ORDER BY person_type DESC, id", ids):
-        people.setdefault(r["club_id"], []).append({"id": r["id"], "name": r["person_name"], "title": r["title"],
-                                                    "type": r["person_type"], "academic_year": r["academic_year"]})
+    for r in await db.all(f"SELECT p.id, p.club_id, p.person_name, p.title, p.person_type, p.academic_year, p.source_url, p.note, "
+                          f"f.department AS fdept, f.extension AS fext, f.is_hod AS fhod, f.name AS fname "
+                          f"FROM club_people p LEFT JOIN faculty f ON f.id = p.faculty_id "
+                          f"WHERE p.club_id IN ({_in(len(ids))}) ORDER BY p.person_type DESC, p.id", ids):
+        people.setdefault(r["club_id"], []).append({
+            "id": r["id"], "name": r["person_name"], "title": r["title"], "type": r["person_type"],
+            "academic_year": r["academic_year"], "source_url": r["source_url"], "note": r["note"],
+            "faculty": {"name": r["fname"], "department": r["fdept"], "extension": r["fext"], "is_hod": bool(r["fhod"])}
+                       if r["fname"] is not None else None})
     return [{"id": c["id"], "name": c["name"], "category": c["category"], "entity_type": c["entity_type"],
              "description": c["description"], "cover": c["cover"], "website": c["website"],
-             "instagram": c["instagram"], "linkedin": c["linkedin"], "cells": cells.get(c["id"], []),
+             "instagram": c["instagram"], "linkedin": c["linkedin"], "leadership_note": c["leadership_note"],
+             "freshness": c["freshness"], "source_url": c["source_url"], "cells": cells.get(c["id"], []),
              "archives": arch.get(c["id"], []), "people": people.get(c["id"], [])} for c in clubs]
 
 
@@ -1101,6 +1108,7 @@ async def ws_stats(user=Depends(get_user)):
 api.include_router(academics.router)
 api.include_router(reports.router)
 api.include_router(groups.router)
+api.include_router(directory.router)
 api.include_router(club_membership.router)
 api.include_router(imports.router)
 app.include_router(api)

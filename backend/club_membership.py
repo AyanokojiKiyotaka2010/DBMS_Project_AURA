@@ -100,6 +100,25 @@ async def attach_membership(clubs: list, user: dict) -> list:
     return clubs
 
 
+# ------------------------------------------------------------------ inbox (all clubs I can manage)
+@router.get("/requests/pending")
+async def pending_inbox(user=Depends(get_user)):
+    """Every waiting join request for the clubs this user manages: all clubs for an Administrator / Convener / Professor,
+    otherwise only the clubs where they are Head / Co-Head."""
+    base = ("SELECT r.club_id, c.name AS club_name, r.user_id, r.user_name, r.message, r.created_at, u.roll_no, "
+            "d.name AS department, y.label AS year FROM club_join_requests r JOIN clubs c ON c.id = r.club_id "
+            "JOIN users u ON u.id = r.user_id LEFT JOIN departments d ON d.id = u.department_id "
+            "LEFT JOIN academic_years y ON y.id = u.year_id ")
+    if user["role"] in GLOBAL_MANAGERS:
+        rows = await db.all(base + "ORDER BY r.created_at")
+    else:
+        rows = await db.all(base + "WHERE r.club_id IN (SELECT club_id FROM club_members WHERE user_id=%s AND role IN ('Head','Co-Head')) "
+                            "ORDER BY r.created_at", (int(user["user_id"]),))
+    return [{"club_id": r["club_id"], "club_name": r["club_name"], "user_id": r["user_id"], "name": r["user_name"],
+             "message": r["message"], "roll_no": r["roll_no"] or "", "department": r["department"] or "",
+             "year": r["year"] or "", "created_at": iso(r["created_at"])} for r in rows]
+
+
 # ------------------------------------------------------------------ joining
 @router.post("/{club_id}/join")
 async def request_join(club_id: int, inp: JoinIn, user=Depends(get_user)):

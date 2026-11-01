@@ -10,6 +10,58 @@ import { ClubMembership } from "./ClubMembers";
 const EMPTY_PERSON = { person_name: "", title: "", person_type: "Student", academic_year: "" };
 const EMPTY = { name: "", category: "", description: "", cover: "", cells: "" };
 
+const LEAD_WORDS = ["chair", "president", "head", "convener", "vice", "co-", "secretary", "coordinator", "lead"];
+const rank = (t) => { const x = (t || "").toLowerCase(); const i = LEAD_WORDS.findIndex((k) => x.includes(k)); return i < 0 ? 99 : i; };
+
+function FacultyLine({ p }) {
+  return (
+    <span>
+      <span className="font-medium">{p.name}</span>
+      <span className="text-ink-3"> · {p.title}</span>
+      {p.faculty ? (
+        <span className="text-ink-2">
+          {" "}· {p.faculty.department}{p.faculty.extension ? ` · office ext. ${p.faculty.extension}` : ""}
+          {p.faculty.is_hod && <span className="ml-1 text-[10px] font-semibold text-brand bg-brand/10 rounded-full px-1.5 py-0.5">HOD</span>}
+        </span>
+      ) : <span className="text-ink-3 text-xs"> · directory entry not matched</span>}
+    </span>
+  );
+}
+
+/** Who runs this club — visible on the card without expanding anything. */
+function WhoRuns({ club }) {
+  const people = club.people || [];
+  const leaders = people.filter((p) => p.type === "Student" && p.title !== "Member").sort((a, b) => rank(a.title) - rank(b.title));
+  const faculty = people.filter((p) => p.type === "Faculty");
+  const shownL = leaders.slice(0, 4), shownF = faculty.slice(0, 3);
+  const more = leaders.length - shownL.length + faculty.length - shownF.length;
+  return (
+    <div className="mt-3 p-3 rounded-xl bg-paper-sidebar border border-edge-light space-y-2" data-testid={`club-who-${club.id}`}>
+      {shownF.length > 0 && (
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.2em] font-semibold text-ink-3 mb-1">Faculty coordinators</div>
+          <ul className="space-y-0.5 text-sm">{shownF.map((p) => <li key={p.id}><FacultyLine p={p} /></li>)}</ul>
+        </div>
+      )}
+      {shownL.length > 0 ? (
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.2em] font-semibold text-ink-3 mb-1">Student leadership{shownL[0].academic_year ? ` · ${shownL[0].academic_year}` : ""}</div>
+          <ul className="space-y-0.5 text-sm">{shownL.map((p) => <li key={p.id}><span className="font-medium">{p.name}</span> <span className="text-ink-3">· {p.title}</span></li>)}</ul>
+        </div>
+      ) : (
+        <div className="text-xs text-ink-3 italic">{club.leadership_note || "No student convenors are listed for this club yet."}</div>
+      )}
+      {more > 0 && <div className="text-[11px] text-ink-3">+{more} more — open “Team, members &amp; archive” below.</div>}
+      {(club.freshness || club.source_url) && (
+        <div className="text-[10px] text-ink-3">
+          {club.freshness}{club.freshness && club.source_url ? " · " : ""}
+          {club.source_url && <a href={club.source_url} target="_blank" rel="noreferrer" className="underline">source</a>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Clubs({ user }) {
   const canManage = CAN_MANAGE_CLUBS(user?.role);
   const [clubs, setClubs] = useState([]);
@@ -19,9 +71,15 @@ export function Clubs({ user }) {
   const [cellDraft, setCellDraft] = useState({});
   const [archDraft, setArchDraft] = useState({});
   const [personDraft, setPersonDraft] = useState({});
+  const [inbox, setInbox] = useState([]);
+  const loadInbox = () => axios.get(`${API}/clubs/requests/pending`).then((r) => setInbox(r.data)).catch(() => setInbox([]));
+  const decideInbox = async (r, what) => {
+    try { await axios.post(`${API}/clubs/${r.club_id}/requests/${r.user_id}/${what}`); toast.success(what === "approve" ? `${r.name} added to ${r.club_name}` : "Request declined"); loadInbox(); load(); }
+    catch (err) { toast.error(errMsg(err)); }
+  };
 
   const load = () => axios.get(`${API}/clubs`).then((r) => setClubs(r.data)).catch(() => {});
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); loadInbox(); }, []);   // eslint-disable-line react-hooks/exhaustive-deps
 
   const replace = (club) => setClubs((p) => p.map((c) => (c.id === club.id ? { ...c, ...club } : c)));   // keep my_status etc.
 
@@ -89,6 +147,23 @@ export function Clubs({ user }) {
         )}
       />
 
+      {inbox.length > 0 && (
+        <TactileCard data-testid="club-inbox">
+          <div className="text-[11px] uppercase tracking-widest font-semibold text-ink-2 mb-3">Join requests waiting for you ({inbox.length})</div>
+          <div className="space-y-2">
+            {inbox.map((r) => (
+              <div key={`${r.club_id}-${r.user_id}`} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                <span><b>{r.name}</b> <span className="text-ink-3 text-xs">{[r.roll_no, r.department, r.year].filter(Boolean).join(" · ")}</span> wants to join <b>{r.club_name}</b>{r.message && <i className="text-ink-3"> — “{r.message}”</i>}</span>
+                <span className="flex gap-2">
+                  <Btn data-testid={`inbox-approve-${r.club_id}-${r.user_id}`} onClick={() => decideInbox(r, "approve")}>Accept</Btn>
+                  <Btn variant="ghost" onClick={() => decideInbox(r, "decline")}>Decline</Btn>
+                </span>
+              </div>
+            ))}
+          </div>
+        </TactileCard>
+      )}
+
       {canManage && showForm && (
         <TactileCard>
           <form onSubmit={create} className="grid md:grid-cols-2 gap-4" data-testid="club-form">
@@ -137,6 +212,7 @@ export function Clubs({ user }) {
                   {c.linkedin && <a href={c.linkedin} target="_blank" rel="noreferrer" className="text-brand-deep hover:underline">LinkedIn</a>}
                 </div>
               )}
+              <WhoRuns club={c} />
               <ClubMembership club={c} user={user} open={expanded === c.id} onChanged={load} />
               <div className="mt-3 flex flex-wrap gap-2">
                 {(c.cells || []).map((cell) => (
@@ -171,8 +247,11 @@ export function Clubs({ user }) {
                         </div>
                         <ul className="space-y-1">
                           {list.map((p) => (
-                            <li key={p.id} className="flex items-center justify-between text-sm">
-                              <span><span className="font-medium">{p.name}</span> <span className="text-ink-3">· {p.title}{p.academic_year ? ` · ${p.academic_year}` : ""}</span></span>
+                            <li key={p.id} className="flex items-center justify-between text-sm gap-2">
+                              {kind === "Faculty" ? <FacultyLine p={p} /> : (
+                                <span><span className="font-medium">{p.name}</span> <span className="text-ink-3">· {p.title}{p.academic_year ? ` · ${p.academic_year}` : ""}</span>
+                                  {p.source_url && <a href={p.source_url} target="_blank" rel="noreferrer" title={p.note || "source"} className="ml-1 text-[10px] text-brand-deep underline">source</a>}</span>
+                              )}
                               {canManage && <button onClick={() => removePerson(c, p.id)} className="text-ink-3 hover:text-brand"><Trash size={12} /></button>}
                             </li>
                           ))}

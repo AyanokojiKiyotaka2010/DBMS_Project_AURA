@@ -335,6 +335,34 @@ def test_anonymous_author_proof():
     assert len(p) == 64 and p == anon.author_proof(7, 42)   # deterministic, fixed length, no raw id inside
 
 
+def test_faculty_import_and_safe_linking():
+    from importer.clubs import load_clubs
+    from importer.faculty import link_club_faculty, load_faculty
+    from importer.names import best_unique
+    c = sqlite_db.install(db)
+    fac = [{"department": "Civil Engineering", "name": "Vaishali S. Dhingra", "extension": "1949", "is_hod": False},
+           {"department": "Chemical Engineering", "name": "Tanmoy Hazra", "extension": "1712", "is_hod": True},
+           {"department": "Physics", "name": "A. Kumar", "extension": "1500"},
+           {"department": "Mechanical Engineering", "name": "Rakesh Maurya", "extension": "1700"}]
+    assert run(load_faculty(fac)) == {"faculty_new": 4, "faculty_updated": 0}
+    assert run(load_faculty(fac))["faculty_updated"] == 4                                # idempotent
+    people = [{"person_name": n, "title": "Chairperson", "person_type": "Faculty", "academic_year": "2024-25",
+               "source_url": "https://x", "note": "annual report"}
+              for n in ["Dr. Dhingra Vaishaliben Samir", "Dr. Rakesh Maurya", "Dr. Alok Kumar", "Dr. Amit Kumar", "Dr. Someone Unknown"]]
+    run(load_clubs([{"name": "C1", "category": "x", "people": people}]))
+    out = run(link_club_faculty())
+    got = {r["person_name"]: r["faculty"] for r in c.all("SELECT p.person_name, f.name AS faculty FROM club_people p LEFT JOIN faculty f ON f.id=p.faculty_id")}
+    assert got["Dr. Dhingra Vaishaliben Samir"] == "Vaishali S. Dhingra"                 # word order + truncated first name
+    assert got["Dr. Rakesh Maurya"] == "Rakesh Maurya"
+    assert got["Dr. Alok Kumar"] is None and got["Dr. Amit Kumar"] is None              # both claim "A. Kumar" -> neither is linked
+    assert got["Dr. Someone Unknown"] is None and out["linked_names"] == 2
+    assert best_unique("Dr. Amit Kumar", [(1, "A. Kumar")]) == 1                          # alone it would link (the dedupe is what protects)
+    # re-importing the club refreshes provenance without duplicating people
+    run(load_clubs([{"name": "C1", "people": [dict(people[1], note="updated")]}]))
+    assert c.all("SELECT note FROM club_people WHERE person_name='Dr. Rakesh Maurya'")[0]["note"] == "updated"
+    assert c.all("SELECT count(*) n FROM club_people")[0]["n"] == 5
+
+
 if __name__ == "__main__":
     n = 0
     for name, fn in sorted(globals().items()):

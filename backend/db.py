@@ -154,6 +154,16 @@ async def ensure_schema():
 
 
 async def _migrate():
+    # v5 -> v6: club details, faculty links
+    for col, ddl in [("leadership_note", "VARCHAR(1000)"), ("freshness", "VARCHAR(500)"), ("source_url", "VARCHAR(500)")]:
+        if not await all(f"SHOW COLUMNS FROM clubs LIKE '{col}'"):
+            await run(f"ALTER TABLE clubs ADD COLUMN {col} {ddl} NOT NULL DEFAULT ''")
+    for col, ddl in [("source_url", "VARCHAR(500) NOT NULL DEFAULT ''"), ("note", "VARCHAR(300) NOT NULL DEFAULT ''")]:
+        if not await all(f"SHOW COLUMNS FROM club_people LIKE '{col}'"):
+            await run(f"ALTER TABLE club_people ADD COLUMN {col} {ddl}")
+    if not await all("SHOW COLUMNS FROM club_people LIKE 'faculty_id'"):
+        await run("ALTER TABLE club_people ADD COLUMN faculty_id INT NULL")
+        await run("ALTER TABLE club_people ADD CONSTRAINT fk_cp_faculty FOREIGN KEY (faculty_id) REFERENCES faculty(id) ON DELETE SET NULL")
     # v4 -> v5: e-mail verification (existing accounts are trusted) and anonymous-author proofs
     if not await all("SHOW COLUMNS FROM users LIKE 'email_verified'"):
         await run("ALTER TABLE users ADD COLUMN email_verified TINYINT(1) NOT NULL DEFAULT 0 AFTER email")

@@ -19,6 +19,7 @@ import { WeeklyDigest } from "./components/features/WeeklyDigest";
 import { Reports } from "./components/features/Reports";
 import { ClassTools } from "./components/features/ClassTools";
 import { AcademicSetup } from "./components/features/AcademicSetup";
+import { FacultyDirectory } from "./components/features/FacultyDirectory";
 
 import {
   House,
@@ -49,6 +50,7 @@ const NAV = [
   { id: "analytics", label: "Professor Analytics", icon: ChartLineUp },
   { id: "clubs", label: "Clubs & Archives", icon: UsersThree, group: "Community" },
   { id: "temp", label: "Temporary Groups", icon: ClockCountdown },
+  { id: "faculty", label: "Faculty Directory", icon: UsersThree },
   { id: "complaints", label: "Complaints", icon: ShieldWarning, group: "Admin" },
   { id: "admin", label: "Role Panel", icon: UserGear, adminOnly: true },
   { id: "setup", label: "Academic Setup", icon: GearSix, adminOnly: true },
@@ -275,6 +277,7 @@ export default function App() {
           {active === "temp" && <TempGroups user={user} />}
           {active === "complaints" && <Complaints user={user} />}
           {active === "admin" && IS_ADMIN(user.role) && <AdminPanel setUser={setUser} />}
+          {active === "faculty" && <FacultyDirectory />}
           {active === "setup" && IS_ADMIN(user.role) && <AcademicSetup />}
           {active === "reports" && CAN_RUN_REPORTS(user.role) && <Reports user={user} />}
           {active === "classtools" && CAN_CLASS_TOOLS(user.role) && <ClassTools user={user} />}

@@ -119,3 +119,14 @@ show the answerer's name and role (accountability), but the asker's own follow-u
 - **Creating accounts**: Academic Setup -> Student placement -> "Create an account" (e.g. a Professor). The person sets a
   password with the emailed code. A student who signs up with their roll number takes over their imported record once their
   email is verified (`ROLL_MUST_MATCH_EMAIL=true` makes that stricter).
+
+## Faculty directory and club contacts
+```bash
+cd backend
+python import_faculty.py "C:\path\SVNIT_Faculty_Directory_Departmentwise.xlsx" --upload https://<backend>.onrender.com --email ADMIN --password PASS
+python import_clubs.py   "C:\path\SVNIT_Clubs_Chapters_Directory.xlsx"        --upload https://<backend>.onrender.com --email ADMIN --password PASS
+```
+Order does not matter and both are safe to repeat. Club faculty coordinators are linked to their directory entry (department,
+office extension, HOD flag) only when the name matches exactly one person; ambiguous names stay unlinked rather than risk
+showing someone else's number. The source workbooks contain no personal phone numbers or emails, so none are shown.
+Join requests for clubs appear in an inbox at the top of the Clubs page for Administrators, Conveners, Professors and club Heads.

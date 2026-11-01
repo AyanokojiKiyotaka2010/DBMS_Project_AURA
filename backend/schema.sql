@@ -249,6 +249,9 @@ CREATE TABLE IF NOT EXISTS clubs (
   website     VARCHAR(500) NOT NULL DEFAULT '',
   instagram   VARCHAR(500) NOT NULL DEFAULT '',
   linkedin    VARCHAR(500) NOT NULL DEFAULT '',
+  leadership_note VARCHAR(1000) NOT NULL DEFAULT '',   -- e.g. 'No named student roster verified'
+  freshness   VARCHAR(500) NOT NULL DEFAULT '',        -- which academic year the published team is from
+  source_url  VARCHAR(500) NOT NULL DEFAULT '',
   created_by  INT NULL,
   created_at  DATETIME NOT NULL,
   UNIQUE (name),
@@ -263,6 +266,19 @@ CREATE TABLE IF NOT EXISTS club_cells (
   FOREIGN KEY (club_id) REFERENCES clubs(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- Official faculty directory (names + office extensions as published by SVNIT; no personal numbers)
+CREATE TABLE IF NOT EXISTS faculty (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  department  VARCHAR(160) NOT NULL,
+  name        VARCHAR(160) NOT NULL,
+  extension   VARCHAR(60)  NOT NULL DEFAULT '',
+  is_hod      TINYINT(1)   NOT NULL DEFAULT 0,
+  affiliation VARCHAR(300) NOT NULL DEFAULT '',
+  note        VARCHAR(300) NOT NULL DEFAULT '',
+  source_url  VARCHAR(500) NOT NULL DEFAULT '',
+  CONSTRAINT uq_faculty UNIQUE (department, name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- Student leaders, faculty coordinators and published members of a club (names as published).
 CREATE TABLE IF NOT EXISTS club_people (
   id            INT AUTO_INCREMENT PRIMARY KEY,
@@ -271,8 +287,12 @@ CREATE TABLE IF NOT EXISTS club_people (
   title         VARCHAR(120) NOT NULL,
   person_type   VARCHAR(10)  NOT NULL DEFAULT 'Student',      -- Student | Faculty
   academic_year VARCHAR(40)  NOT NULL DEFAULT '',
+  source_url    VARCHAR(500) NOT NULL DEFAULT '',
+  note          VARCHAR(300) NOT NULL DEFAULT '',
+  faculty_id    INT NULL,                                      -- matched faculty-directory entry (by name)
   CONSTRAINT uq_club_person UNIQUE (club_id, person_name, title, person_type),
-  FOREIGN KEY (club_id) REFERENCES clubs(id) ON DELETE CASCADE
+  FOREIGN KEY (club_id)    REFERENCES clubs(id)   ON DELETE CASCADE,
+  FOREIGN KEY (faculty_id) REFERENCES faculty(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS club_archives (

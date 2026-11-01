@@ -31,27 +31,29 @@ def parse_clubs(path):
             continue
         c = {"name": _clean(r[1])[:160], "entity_type": _clean(r[2])[:120], "category": _clean(r[3])[:80],
              "description": _clean(r[4]), "website": _clean(r[7])[:500], "instagram": _clean(r[8])[:500],
-             "linkedin": _clean(r[9])[:500], "people": []}
+             "linkedin": _clean(r[9])[:500], "leadership_note": _clean(r[5])[:1000], "freshness": _clean(r[6])[:500],
+             "source_url": _clean(r[10])[:500], "people": []}
         clubs.append(c)
         by_id[_clean(r[0])] = c
     unmatched = []
 
-    def add(label, table, name, title, ptype, ay):
+    def add(label, table, name, title, ptype, ay, source="", note=""):
         cid = table.get(_clean(label))
         if not cid or cid not in by_id:
             unmatched.append(_clean(label))
             return
         if name and title:
             by_id[cid]["people"].append({"person_name": _clean(name)[:120], "title": _clean(title)[:120],
-                                         "person_type": ptype, "academic_year": _clean(ay)[:40]})
+                                         "person_type": ptype, "academic_year": _clean(ay)[:40],
+                                         "source_url": _clean(source)[:500], "note": _clean(note)[:300]})
 
     for r in wb["Leadership & Core Team"].iter_rows(min_row=2, values_only=True):
         if r[0]:
-            add(r[0], LEADERSHIP, r[1], r[2], "Student", r[3])
+            add(r[0], LEADERSHIP, r[1], r[2], "Student", r[3], r[6], r[5])
     for r in wb["Published Members"].iter_rows(min_row=2, values_only=True):
         if r[0]:
-            add(r[0], PUBLISHED, r[1], "Member", "Student", r[2])
+            add(r[0], PUBLISHED, r[1], "Member", "Student", r[2], r[5], r[4])
     for r in wb["Faculty Coordinators"].iter_rows(min_row=2, values_only=True):
         if r[0]:
-            add(r[0], FACULTY, r[2], r[1], "Faculty", r[3])
+            add(r[0], FACULTY, r[2], r[1], "Faculty", r[3], r[4], r[5])
     return clubs, sorted(set(unmatched))

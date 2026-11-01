@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from common import get_user, require_role
 from importer.clubs import load_clubs
+from importer.faculty import link_club_faculty, load_faculty
 from importer.loader import load
 from importer.result_sheets import GRADE_POINTS
 
@@ -69,6 +70,8 @@ class PersonIn(BaseModel):
     title: str = Field(min_length=1, max_length=120)
     person_type: str = "Student"
     academic_year: str = Field(default="", max_length=40)
+    source_url: str = Field(default="", max_length=500)
+    note: str = Field(default="", max_length=300)
 
 
 class ClubItemIn(BaseModel):
@@ -79,6 +82,9 @@ class ClubItemIn(BaseModel):
     website: str = Field(default="", max_length=500)
     instagram: str = Field(default="", max_length=500)
     linkedin: str = Field(default="", max_length=500)
+    leadership_note: str = Field(default="", max_length=1000)
+    freshness: str = Field(default="", max_length=500)
+    source_url: str = Field(default="", max_length=500)
     people: List[PersonIn] = Field(default=[], max_length=400)
 
 
@@ -94,4 +100,28 @@ async def import_clubs(inp: ClubsImportIn, user=Depends(get_user)):
         for p in c["people"]:
             if p["person_type"] not in ("Student", "Faculty"):
                 raise HTTPException(400, f"bad person_type {p['person_type']!r}")
-    return {"ok": True, "stats": await load_clubs(items, created_by=int(user["user_id"]))}
+    stats = await load_clubs(items, created_by=int(user["user_id"]))
+    stats.update(await link_club_faculty())
+    return {"ok": True, "stats": stats}
+
+
+class FacultyItemIn(BaseModel):
+    department: str = Field(min_length=1, max_length=160)
+    name: str = Field(min_length=1, max_length=160)
+    extension: str = Field(default="", max_length=60)
+    is_hod: bool = False
+    affiliation: str = Field(default="", max_length=300)
+    note: str = Field(default="", max_length=300)
+    source_url: str = Field(default="", max_length=500)
+
+
+class FacultyImportIn(BaseModel):
+    faculty: List[FacultyItemIn] = Field(max_length=300)
+
+
+@router.post("/admin/import-faculty")
+async def import_faculty(inp: FacultyImportIn, user=Depends(get_user)):
+    require_role(user, ["Administrator"])
+    stats = await load_faculty([f.model_dump() for f in inp.faculty])
+    stats.update(await link_club_faculty())
+    return {"ok": True, "stats": stats}
