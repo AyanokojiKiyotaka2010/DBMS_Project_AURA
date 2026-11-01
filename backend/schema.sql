@@ -283,6 +283,46 @@ CREATE TABLE IF NOT EXISTS club_archives (
   FOREIGN KEY (club_id) REFERENCES clubs(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- Club membership: request -> a club manager / Head approves; documents are for members only
+CREATE TABLE IF NOT EXISTS club_members (
+  club_id   INT NOT NULL,
+  user_id   INT NOT NULL,
+  role      VARCHAR(20) NOT NULL DEFAULT 'Member',      -- Member | Core | Co-Head | Head
+  joined_at DATETIME NOT NULL,
+  PRIMARY KEY (club_id, user_id),
+  INDEX ix_cm_user (user_id),
+  FOREIGN KEY (club_id) REFERENCES clubs(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS club_join_requests (
+  club_id    INT NOT NULL,
+  user_id    INT NOT NULL,
+  user_name  VARCHAR(120) NOT NULL,
+  message    VARCHAR(300) NOT NULL DEFAULT '',
+  created_at DATETIME NOT NULL,
+  PRIMARY KEY (club_id, user_id),
+  FOREIGN KEY (club_id) REFERENCES clubs(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS club_documents (
+  id               INT AUTO_INCREMENT PRIMARY KEY,
+  club_id          INT NOT NULL,
+  title            VARCHAR(200) NOT NULL,
+  description      VARCHAR(500) NOT NULL DEFAULT '',
+  file_name        VARCHAR(160) NOT NULL,
+  mime             VARCHAR(100) NOT NULL,
+  size             INT NOT NULL,
+  data             LONGTEXT NOT NULL,
+  uploaded_by      INT NULL,
+  uploaded_by_name VARCHAR(120) NOT NULL,
+  created_at       DATETIME NOT NULL,
+  INDEX ix_cd_club (club_id),
+  FOREIGN KEY (club_id)     REFERENCES clubs(id) ON DELETE CASCADE,
+  FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- ---------------------------------------------------------------------------
 -- Temporary groups
 -- ---------------------------------------------------------------------------
@@ -303,6 +343,34 @@ CREATE TABLE IF NOT EXISTS temp_group_members (
   PRIMARY KEY (group_id, user_id),
   FOREIGN KEY (group_id) REFERENCES temp_groups(id) ON DELETE CASCADE,
   FOREIGN KEY (user_id)  REFERENCES users(id)       ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Join requests (creator approves; the group name is the "keyword" nobody else can look up)
+CREATE TABLE IF NOT EXISTS temp_group_requests (
+  group_id   INT NOT NULL,
+  user_id    INT NOT NULL,
+  user_name  VARCHAR(120) NOT NULL,
+  created_at DATETIME NOT NULL,
+  PRIMARY KEY (group_id, user_id),
+  FOREIGN KEY (group_id) REFERENCES temp_groups(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id)  REFERENCES users(id)       ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Chat + shared files. Everything cascades away with the group when its timer ends.
+CREATE TABLE IF NOT EXISTS temp_group_messages (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  group_id   INT NOT NULL,
+  user_id    INT NULL,
+  user_name  VARCHAR(120) NOT NULL,
+  body       TEXT NOT NULL,
+  file_name  VARCHAR(120) NULL,
+  file_mime  VARCHAR(100) NULL,
+  file_size  INT NULL,
+  file_data  LONGTEXT NULL,
+  created_at DATETIME NOT NULL,
+  INDEX ix_tgm_group (group_id, id),
+  FOREIGN KEY (group_id) REFERENCES temp_groups(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id)  REFERENCES users(id)       ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ---------------------------------------------------------------------------

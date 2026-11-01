@@ -41,6 +41,8 @@ import mailer  # noqa: E402
 from anon import author_proof, is_author  # noqa: E402
 from auth_codes import CodeError, check_code, issue_code  # noqa: E402
 import academics  # noqa: E402
+import club_membership  # noqa: E402
+import groups  # noqa: E402
 import imports  # noqa: E402
 import reports  # noqa: E402
 
@@ -81,7 +83,9 @@ async def lifespan(_: FastAPI):
     await backfill_author_proofs()
     logger.info("Email verification: %s (provider=%s, configured=%s)", "ON" if verification_enabled() else "OFF",
                 mailer.provider() or "none", mailer.configured())
+    sweeper = asyncio.create_task(groups.purge_loop())          # expired temporary groups vanish on schedule
     yield
+    sweeper.cancel()
     await db.close_pool()
 
 
@@ -152,11 +156,6 @@ class QueryCreate(BaseModel):
 
 class AnswerCreate(BaseModel):
     text: str
-
-
-class TempGroupCreate(BaseModel):
-    name: str
-    hours: int = 24
 
 
 class ComplaintCreate(BaseModel):
@@ -357,10 +356,23 @@ async def register(inp: UserRegister, response: Response):
         if dv["department_id"] != inp.department_id or dv["year_id"] != inp.year_id:
             raise HTTPException(400, "Division does not belong to the chosen department / year")
     roll = (inp.roll_no or "").strip() or None
-    if roll and await db.one("SELECT id FROM users WHERE roll_no=%s AND id<>%s", (roll, existing["id"] if existing else 0)):
-        raise HTTPException(400, "Roll number already registered")
-
-    if existing:
+    claim = None                                    # an imported, never-claimed record carrying this roll number
+    if roll:
+        holder = await db.one("SELECT id, email_verified, role, department_id, year_id, division_id FROM users WHERE roll_no=%s", (roll,))
+        if holder and (not existing or holder["id"] != existing["id"]):
+            if holder["email_verified"] or not verify_on:
+                raise HTTPException(400, "Roll number already registered")
+            if existing:
+                raise HTTPException(400, "That roll number belongs to another unverified sign-up — contact the administrator")
+            if os.environ.get("ROLL_MUST_MATCH_EMAIL", "").lower() in ("1", "true", "yes") and roll.lower() not in email.split("@")[0].lower():
+                raise HTTPException(400, "To claim this roll number use your official email address (it contains the roll number)")
+            claim = holder                          # takes over the record (department, year, grades) once the email is verified
+    if claim:
+        uid = claim["id"]
+        # keep the record's own placement and role; the person only supplies who they are and how they log in
+        await db.run("UPDATE users SET name=%s, email=%s, password_hash=%s, requested_role=%s WHERE id=%s",
+                     (inp.name.strip(), email, hash_pw(inp.password), requested if role == "Student" else None, uid))
+    elif existing:
         uid = existing["id"]
         await db.run(
             "UPDATE users SET name=%s, password_hash=%s, role=%s, requested_role=%s, department_id=%s, year_id=%s, "
@@ -492,19 +504,31 @@ _ANN_SELECT = (
 
 @api.get("/announcements")
 async def list_announcements(department: str = "", year: str = "", user=Depends(get_user)):
-    # Year is deliberately not filtered: cross-year notices stay visible (same as before).
-    if department:
-        rows = await db.all(_ANN_SELECT + "WHERE d.name=%s ORDER BY a.created_at DESC LIMIT 200", (department,))
+    """Department notices are only visible to that department (plus campus-wide ones with no department).
+    Only an Administrator without a department of their own sees every department."""
+    if user["role"] == "Administrator" and not user["department_id"]:
+        if department and department != "Administration":
+            rows = await db.all(_ANN_SELECT + "WHERE d.name=%s OR a.department_id IS NULL ORDER BY a.created_at DESC LIMIT 200", (department,))
+        else:
+            rows = await db.all(_ANN_SELECT + "ORDER BY a.created_at DESC LIMIT 200")
+    elif user["department_id"]:
+        rows = await db.all(_ANN_SELECT + "WHERE a.department_id=%s OR a.department_id IS NULL ORDER BY a.created_at DESC LIMIT 200",
+                            (user["department_id"],))
     else:
-        rows = await db.all(_ANN_SELECT + "ORDER BY a.created_at DESC LIMIT 200")
+        rows = await db.all(_ANN_SELECT + "WHERE a.department_id IS NULL ORDER BY a.created_at DESC LIMIT 200")
     return [_ann_out(r) for r in rows]
 
 
 @api.post("/announcements")
 async def create_announcement(inp: AnnouncementCreate, user=Depends(get_user)):
     require_role(user, ["CR", "DCR", "Administrator", "Professor"])
-    dept_id = await dept_id_by_name(inp.department) if inp.department else user["department_id"]
-    year_id = await year_id_by_label(inp.year) if inp.year else user["year_id"]
+    if user["department_id"]:
+        dept_id = user["department_id"]                 # CR / DCR / Professor / HOD can only post for their own department
+    elif user["role"] == "Administrator":
+        dept_id = await dept_id_by_name(inp.department) if inp.department and inp.department != "Administration" else None
+    else:
+        raise HTTPException(400, "Your account has no department yet — ask the administrator to set it.")
+    year_id = user["year_id"] if user["role"] in ("CR", "DCR") else (await year_id_by_label(inp.year) if inp.year else None)
     deadline = parse_iso(inp.deadline)
     aid = await db.run(
         "INSERT INTO announcements (title,body,kind,deadline,department_id,year_id,author_id,author_name,author_role,created_at) "
@@ -675,7 +699,7 @@ async def _clubs_out(where: str = "", args: tuple = ()) -> list:
 
 @api.get("/clubs")
 async def list_clubs(user=Depends(get_user)):
-    return await _clubs_out()
+    return await club_membership.attach_membership(await _clubs_out(), user)
 
 
 @api.post("/clubs")
@@ -783,55 +807,6 @@ async def set_archive(club_id: int, inp: ArchiveYear, user=Depends(get_user)):
     return (await _clubs_out("WHERE id=%s", (club_id,)))[0]
 
 
-# ================================================================= Temporary groups
-async def _temp_out(where: str = "", args: tuple = ()) -> list:
-    groups = await db.all("SELECT id, name, creator_id, creator_name, created_at, expires_at FROM temp_groups "
-                          + where + " ORDER BY expires_at", args)
-    members = {}
-    if groups:
-        ids = tuple(g["id"] for g in groups)
-        for m in await db.all(f"SELECT group_id, user_id FROM temp_group_members WHERE group_id IN ({_in(len(ids))})", ids):
-            members.setdefault(m["group_id"], []).append(str(m["user_id"]))
-    return [{"id": str(g["id"]), "name": g["name"],
-             "creator_id": str(g["creator_id"]) if g["creator_id"] is not None else None,
-             "creator_name": g["creator_name"], "members": members.get(g["id"], []),
-             "created_at": iso(g["created_at"]), "expires_at": iso(g["expires_at"])} for g in groups]
-
-
-@api.get("/temp-groups")
-async def list_temp(user=Depends(get_user)):
-    # auto-expire: members go with the group (ON DELETE CASCADE)
-    await db.run("DELETE FROM temp_groups WHERE expires_at < %s", (to_db(now_utc()),))
-    return await _temp_out()
-
-
-@api.post("/temp-groups")
-async def create_temp(inp: TempGroupCreate, user=Depends(get_user)):
-    if inp.hours < 1 or inp.hours > 24 * 30:
-        raise HTTPException(400, "hours must be between 1 and 720")
-    now = now_utc()
-    async with db.transaction() as tx:
-        gid = await tx.run(
-            "INSERT INTO temp_groups (name,creator_id,creator_name,created_at,expires_at) VALUES (%s,%s,%s,%s,%s)",
-            (inp.name.strip(), int(user["user_id"]), user["name"], to_db(now), to_db(now + timedelta(hours=inp.hours))),
-        )
-        await tx.run("INSERT INTO temp_group_members (group_id,user_id) VALUES (%s,%s)", (gid, int(user["user_id"])))
-    return (await _temp_out("WHERE id=%s", (gid,)))[0]
-
-
-@api.post("/temp-groups/{gid}/join")
-async def join_temp(gid: int, user=Depends(get_user)):
-    if not await db.one("SELECT id FROM temp_groups WHERE id=%s", (gid,)):
-        raise HTTPException(404, "Group not found")
-    uid = int(user["user_id"])
-    if not await db.one("SELECT 1 AS x FROM temp_group_members WHERE group_id=%s AND user_id=%s", (gid, uid)):
-        try:
-            await db.run("INSERT INTO temp_group_members (group_id,user_id) VALUES (%s,%s)", (gid, uid))
-        except Exception:      # double-click race: the composite PK already has this member
-            pass
-    return {"ok": True}
-
-
 # ================================================================= Complaints
 async def _complaints_out(rows: list) -> list:
     atts = await load_attachments("complaint", [r["id"] for r in rows])
@@ -882,6 +857,43 @@ async def admin_list_users(user=Depends(get_user)):
     require_role(user, ["Administrator"])
     rows = await db.all(USER_SQL + "ORDER BY u.created_at DESC, u.id DESC LIMIT 1000")
     return [user_public(r) for r in rows]
+
+
+class StaffCreate(BaseModel):
+    name: str
+    email: EmailStr
+    role: str = "Professor"
+    department_id: Optional[int] = None
+    year_id: Optional[int] = None
+    division_id: Optional[int] = None
+    roll_no: Optional[str] = None
+
+
+@api.post("/admin/users")
+async def admin_create_user(inp: StaffCreate, user=Depends(get_user)):
+    """Create an account for someone else (e.g. a Professor). The e-mail counts as verified because the
+    administrator vouches for it; the person sets their own password with the emailed code ("Forgot password?")."""
+    require_role(user, ["Administrator"])
+    email = inp.email.lower().strip()
+    if inp.role not in ALLOWED_ROLES or inp.role == "Administrator":
+        raise HTTPException(400, "Role must be one of: " + ", ".join(sorted(ALLOWED_ROLES - {"Administrator"})))
+    if await db.one("SELECT id FROM users WHERE email=%s", (email,)):
+        raise HTTPException(400, "Email already registered")
+    if inp.department_id is not None and not await db.one("SELECT id FROM departments WHERE id=%s", (inp.department_id,)):
+        raise HTTPException(400, "Unknown department")
+    roll = (inp.roll_no or "").strip() or None
+    if roll and await db.one("SELECT id FROM users WHERE roll_no=%s", (roll,)):
+        raise HTTPException(400, "Roll number already used")
+    temp_pw = uuid.uuid4().hex[:12]
+    uid = await db.run(
+        "INSERT INTO users (name,email,email_verified,password_hash,role,department_id,year_id,division_id,roll_no,created_at) "
+        "VALUES (%s,%s,1,%s,%s,%s,%s,%s,%s,%s)",
+        (inp.name.strip(), email, hash_pw(temp_pw), inp.role, inp.department_id, inp.year_id, inp.division_id, roll, to_db(now_utc())))
+    sent = await send_code(uid, inp.name.strip(), email, "reset")
+    out = {"ok": True, "email_sent": sent, "user": user_public(await fetch_user("u.id=%s", (uid,)))}
+    if not sent:                       # no mail provider: hand the one-time password to the administrator instead
+        out["temporary_password"] = temp_pw
+    return out
 
 
 @api.post("/admin/users/{uid}/role")
@@ -1088,6 +1100,8 @@ async def ws_stats(user=Depends(get_user)):
 # ================================================================= wiring
 api.include_router(academics.router)
 api.include_router(reports.router)
+api.include_router(groups.router)
+api.include_router(club_membership.router)
 api.include_router(imports.router)
 app.include_router(api)
 

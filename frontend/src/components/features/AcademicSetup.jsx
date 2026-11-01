@@ -178,6 +178,43 @@ function CoursesTab({ structure }) {
 }
 
 /* ------------------------------------------------------------------ people */
+function AddAccount({ structure, onDone }) {
+  const blank = { name: "", email: "", role: "Professor", department_id: "", year_id: "", division_id: "", roll_no: "" };
+  const [f, setF] = useState(blank);
+  const [result, setResult] = useState(null);
+  const divs = structure.divisions.filter((d) => String(d.department_id) === f.department_id && String(d.year_id) === f.year_id);
+  const submit = async (e) => {
+    e.preventDefault();
+    const num = (v) => (v === "" ? null : Number(v));
+    try {
+      const r = await axios.post(`${API}/admin/users`, { ...f, department_id: num(f.department_id), year_id: num(f.year_id), division_id: num(f.division_id), roll_no: f.roll_no.trim() || null });
+      setResult(r.data); setF(blank); onDone();
+      toast.success(r.data.email_sent ? "Account created — a code to set the password was emailed" : "Account created");
+    } catch (err) { toast.error(errMsg(err)); }
+  };
+  return (
+    <div className="mb-6 pb-6 border-b border-edge-light" data-testid="add-account">
+      <h3 className="font-serif text-lg font-semibold mb-1">Create an account</h3>
+      <p className="text-xs text-ink-3 mb-3">For professors, CRs or anyone you want to set up yourself. The email counts as verified; they choose their own password with the emailed code (login page → “Forgot password?”).</p>
+      <form onSubmit={submit} className="grid md:grid-cols-4 gap-3">
+        <Field label="Name"><input required data-testid="acct-name" className={inputCls} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
+        <Field label="Email"><input required type="email" data-testid="acct-email" className={inputCls} value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} /></Field>
+        <Field label="Role"><Select testid="acct-role" value={f.role} onChange={(v) => setF({ ...f, role: v })} options={["Professor", "CR", "DCR", "Convener", "Student", "Senior", "Alumni"].map((r) => ({ value: r, label: r }))} /></Field>
+        <Field label="Department"><Select testid="acct-dept" value={f.department_id} onChange={(v) => setF({ ...f, department_id: v, division_id: "" })} placeholder="—" options={structure.departments.map((d) => ({ value: d.id, label: d.name }))} /></Field>
+        <Field label="Year"><Select value={f.year_id} onChange={(v) => setF({ ...f, year_id: v, division_id: "" })} placeholder="—" options={structure.years.map((y) => ({ value: y.id, label: y.label }))} /></Field>
+        <Field label="Division"><Select value={f.division_id} onChange={(v) => setF({ ...f, division_id: v })} placeholder="—" options={divs.map((d) => ({ value: d.id, label: d.name }))} /></Field>
+        <Field label="Roll no. (optional)"><input className={inputCls} value={f.roll_no} onChange={(e) => setF({ ...f, roll_no: e.target.value })} /></Field>
+        <div className="flex items-end"><Btn type="submit" data-testid="acct-submit">Create account</Btn></div>
+      </form>
+      {result && !result.email_sent && result.temporary_password && (
+        <div className="mt-3 text-sm bg-brand/10 text-brand-deep rounded-lg px-3 py-2" data-testid="acct-temp-password">
+          No email provider is configured, so here is a one-time password for <b>{result.user.email}</b>: <code className="font-mono font-bold">{result.temporary_password}</code> — pass it on and ask them to change it.
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PeopleTab({ structure }) {
   const [users, setUsers] = useState([]);
   const [q, setQ] = useState("");
@@ -193,6 +230,7 @@ function PeopleTab({ structure }) {
   const val = (v) => (v === null || v === undefined ? "" : v);
   return (
     <TactileCard>
+      <AddAccount structure={structure} onDone={load} />
       <input data-testid="people-search" className={inputCls + " mb-4"} placeholder="Search name, email or roll no." value={q} onChange={(e) => setQ(e.target.value)} />
       <div className="overflow-x-auto">
         <table className="w-full text-sm" data-testid="people-table">

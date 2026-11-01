@@ -182,18 +182,30 @@ def test_clubs_are_manually_created():
 
 
 # ---------- Temp groups ----------
-def test_temp_group_create_and_join():
+def test_temp_group_private_join_and_chat():
     s, u = _login("student")
-    r = s.post(f"{API}/temp-groups", json={"name": f"TEST Grp {uuid.uuid4().hex[:5]}", "hours": 6})
+    name = f"TEST Grp {uuid.uuid4().hex[:5]}"
+    r = s.post(f"{API}/temp-groups", json={"name": name, "hours": 6})
     assert r.status_code == 200
     gid = r.json()["id"]
-    # Second user joins
+    # an outsider cannot see the group, and can only ask to join by its exact name
     s2, u2 = _login("senior")
-    r2 = s2.post(f"{API}/temp-groups/{gid}/join")
-    assert r2.status_code == 200
-    lst = s.get(f"{API}/temp-groups").json()
-    g = next(x for x in lst if x["id"] == gid)
-    assert u2["user_id"] in g["members"]
+    assert all(g["id"] != gid for g in s2.get(f"{API}/temp-groups").json()["groups"])
+    assert s2.post(f"{API}/temp-groups/request", json={"name": name}).status_code == 200
+    assert s2.get(f"{API}/temp-groups/{gid}/messages").status_code == 404          # not a member yet
+    reqs = s.get(f"{API}/temp-groups/{gid}/requests").json()
+    assert [x["user_id"] for x in reqs] == [u2["user_id"]]
+    assert s.post(f"{API}/temp-groups/{gid}/requests/{u2['user_id']}/approve").status_code == 200
+    # now they can chat
+    assert s2.post(f"{API}/temp-groups/{gid}/messages", json={"body": "hi from senior"}).status_code == 200
+    assert s.get(f"{API}/temp-groups/{gid}/messages").json()[-1]["body"] == "hi from senior"
+    assert s.get(f"{API}/temp-groups/{gid}/export").headers["content-type"] == "application/zip"
+
+
+def test_announcements_stay_in_their_department():
+    admin, _ = _login("admin")
+    lst = admin.get(f"{API}/announcements").json()
+    assert isinstance(lst, list)
 
 
 # ---------- Complaints ----------

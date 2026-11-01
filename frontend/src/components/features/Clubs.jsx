@@ -5,6 +5,7 @@ import { API, CAN_MANAGE_CLUBS } from "../../lib/campus";
 import { TactileCard, SectionHeading } from "../CampusUI";
 import { Books, ArrowUpRight, Plus, Trash } from "@phosphor-icons/react";
 import { Field, Btn, inputCls, errMsg } from "./shared";
+import { ClubMembership } from "./ClubMembers";
 
 const EMPTY_PERSON = { person_name: "", title: "", person_type: "Student", academic_year: "" };
 const EMPTY = { name: "", category: "", description: "", cover: "", cells: "" };
@@ -22,7 +23,7 @@ export function Clubs({ user }) {
   const load = () => axios.get(`${API}/clubs`).then((r) => setClubs(r.data)).catch(() => {});
   useEffect(() => { load(); }, []);
 
-  const replace = (club) => setClubs((p) => p.map((c) => (c.id === club.id ? club : c)));
+  const replace = (club) => setClubs((p) => p.map((c) => (c.id === club.id ? { ...c, ...club } : c)));   // keep my_status etc.
 
   const create = async (e) => {
     e.preventDefault();
@@ -136,6 +137,7 @@ export function Clubs({ user }) {
                   {c.linkedin && <a href={c.linkedin} target="_blank" rel="noreferrer" className="text-brand-deep hover:underline">LinkedIn</a>}
                 </div>
               )}
+              <ClubMembership club={c} user={user} open={expanded === c.id} onChanged={load} />
               <div className="mt-3 flex flex-wrap gap-2">
                 {(c.cells || []).map((cell) => (
                   <span key={cell} className="text-[10px] font-semibold px-2 py-0.5 rounded-full border border-edge-light bg-paper-sidebar text-ink-2">#{cell}</span>
@@ -154,7 +156,7 @@ export function Clubs({ user }) {
                 className="mt-4 text-xs font-semibold text-brand-deep hover:text-brand flex items-center gap-1"
               >
                 <Books size={14} />
-                {expanded === c.id ? "Hide details" : `Team & archive${(c.people || []).length ? ` (${c.people.length})` : ""}`}
+                {expanded === c.id ? "Hide details" : `Team, members & archive${(c.people || []).length ? ` (${c.people.length})` : ""}`}
                 <ArrowUpRight size={12} />
               </button>
               {expanded === c.id && (

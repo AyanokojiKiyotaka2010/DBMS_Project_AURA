@@ -106,3 +106,16 @@ An unverified sign-up never blocks the real owner of an address: they can simply
 ## Anonymous queries
 The asker's id is not stored — only an HMAC proof (`anon.py`) so the author can still resolve their own query. Answers
 show the answerer's name and role (accountability), but the asker's own follow-ups appear as "Anonymous asker".
+
+## Groups, clubs and announcements
+- **Temporary groups** are private: nobody can list them. You join by typing the exact group name; the creator approves.
+  Members chat under their real names and share files (2 MB each, 30 MB per group). When the timer ends the group, its
+  messages and files are deleted automatically; "Save chat" downloads a ZIP first, and a banner appears in the last hour.
+- **Clubs**: anyone can request to join; an Administrator / Convener / Professor or the club's Head / Co-Head approves.
+  Members see the member list and the archive documents (uploaded by managers or Heads, 4 MB each). Managers can add
+  students in bulk by roll number and appoint Heads.
+- **Announcements** are visible only to the department that posted them (plus campus-wide notices posted by an Administrator
+  who has no department). CR / DCR / Professor / H.O.D. can post only for their own department.
+- **Creating accounts**: Academic Setup -> Student placement -> "Create an account" (e.g. a Professor). The person sets a
+  password with the emailed code. A student who signs up with their roll number takes over their imported record once their
+  email is verified (`ROLL_MUST_MATCH_EMAIL=true` makes that stricter).
