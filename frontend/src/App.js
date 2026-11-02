@@ -4,6 +4,9 @@ import { toast } from "sonner";
 import { useAuth } from "./context/AuthContext";
 import AuthPage from "./components/AuthPage";
 import { RoleBadge } from "./components/CampusUI";
+import { motion } from "framer-motion";
+import { PageTransition } from "./components/motion";
+import CommandPalette from "./components/CommandPalette";
 import { API, IS_ADMIN, CAN_VIEW_DIGEST, CAN_RUN_REPORTS, CAN_CLASS_TOOLS } from "./lib/campus";
 
 import { Dashboard } from "./components/features/Dashboard";
@@ -23,6 +26,7 @@ import { FacultyDirectory } from "./components/features/FacultyDirectory";
 
 import {
   House,
+  MagnifyingGlass,
   Megaphone,
   Question,
   UsersThree,
@@ -72,6 +76,12 @@ export default function App() {
   const { user, logout, loading, setUser } = useAuth();
   const [active, setActive] = useState("dashboard");
   const [escalations, setEscalations] = useState({ count: 0, items: [], tier: null });
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  useEffect(() => {                       // Ctrl/⌘ + K opens the quick-jump palette from anywhere
+    const onKey = (e) => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setPaletteOpen((o) => !o); } };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const prevCountRef = React.useRef(0);
   const firstFetchRef = React.useRef(true);
@@ -155,6 +165,16 @@ export default function App() {
           </div>
         </div>
 
+        <div className="px-3 pt-3">
+          <button
+            data-testid="open-palette"
+            onClick={() => setPaletteOpen(true)}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-xl border border-edge-light bg-paper-card/70 text-ink-3 text-xs hover:border-brand/40 hover:text-ink-2 transition-colors"
+          >
+            <MagnifyingGlass size={14} /> <span className="flex-1 text-left">Quick jump…</span>
+            <kbd className="border border-edge-light rounded px-1.5 py-0.5 text-[10px]">Ctrl K</kbd>
+          </button>
+        </div>
         <nav className="flex-1 overflow-y-auto p-3 space-y-1">
           {nav.map((item, i) => {
             const prev = nav[i - 1];
@@ -171,14 +191,19 @@ export default function App() {
                 <button
                   data-testid={`nav-${item.id}`}
                   onClick={() => setActive(item.id)}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                    isActive
-                      ? "bg-paper-card text-ink shadow-clay border border-edge-light"
-                      : "text-ink-2 hover:text-ink hover:bg-paper-card/60"
+                  className={`relative w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+                    isActive ? "text-ink" : "text-ink-2 hover:text-ink hover:bg-paper-card/60"
                   }`}
                 >
-                  <Icon size={17} weight={isActive ? "duotone" : "regular"} className={isActive ? "text-brand" : ""} />
-                  <span>{item.label}</span>
+                  {isActive && (
+                    <motion.span
+                      layoutId="nav-pill"
+                      className="absolute inset-0 rounded-xl bg-paper-card shadow-clay border border-edge-light"
+                      transition={{ type: "spring", stiffness: 420, damping: 36 }}
+                    />
+                  )}
+                  <Icon size={17} weight={isActive ? "duotone" : "regular"} className={`relative ${isActive ? "text-brand" : ""}`} />
+                  <span className="relative">{item.label}</span>
                 </button>
               </React.Fragment>
             );
@@ -267,22 +292,25 @@ export default function App() {
             </div>
           )}
 
-          {active === "dashboard" && <Dashboard user={user} setActive={setActive} />}
-          {active === "announcements" && <Announcements user={user} />}
-          {active === "attendance" && <Attendance user={user} />}
-          {active === "digest" && CAN_VIEW_DIGEST(user.role) && <WeeklyDigest user={user} />}
-          {active === "queries" && <Queries user={user} />}
-          {active === "analytics" && <ProfessorAnalytics />}
-          {active === "clubs" && <Clubs user={user} />}
-          {active === "temp" && <TempGroups user={user} />}
-          {active === "complaints" && <Complaints user={user} />}
-          {active === "admin" && IS_ADMIN(user.role) && <AdminPanel setUser={setUser} />}
-          {active === "faculty" && <FacultyDirectory />}
-          {active === "setup" && IS_ADMIN(user.role) && <AcademicSetup />}
-          {active === "reports" && CAN_RUN_REPORTS(user.role) && <Reports user={user} />}
-          {active === "classtools" && CAN_CLASS_TOOLS(user.role) && <ClassTools user={user} />}
+          <PageTransition k={active}>
+            {active === "dashboard" && <Dashboard user={user} setActive={setActive} />}
+            {active === "announcements" && <Announcements user={user} />}
+            {active === "attendance" && <Attendance user={user} />}
+            {active === "digest" && CAN_VIEW_DIGEST(user.role) && <WeeklyDigest user={user} />}
+            {active === "queries" && <Queries user={user} />}
+            {active === "analytics" && <ProfessorAnalytics />}
+            {active === "clubs" && <Clubs user={user} />}
+            {active === "temp" && <TempGroups user={user} />}
+            {active === "complaints" && <Complaints user={user} />}
+            {active === "admin" && IS_ADMIN(user.role) && <AdminPanel setUser={setUser} />}
+            {active === "faculty" && <FacultyDirectory />}
+            {active === "setup" && IS_ADMIN(user.role) && <AcademicSetup />}
+            {active === "reports" && CAN_RUN_REPORTS(user.role) && <Reports user={user} />}
+            {active === "classtools" && CAN_CLASS_TOOLS(user.role) && <ClassTools user={user} />}
+          </PageTransition>
         </div>
       </main>
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} items={nav} onPick={setActive} />
     </div>
   );
 }

@@ -3,6 +3,7 @@ import axios from "axios";
 import { API } from "../../lib/campus";
 import { TactileCard, SectionHeading, EncryptedIDChip } from "../CampusUI";
 import { Megaphone, ArrowUpRight } from "@phosphor-icons/react";
+import { CountUp, Skeleton, Stagger, Item, Lift } from "../motion";
 
 export function Dashboard({ user, setActive }) {
   const [stats, setStats] = useState(null);
@@ -51,12 +52,12 @@ export function Dashboard({ user, setActive }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatTile label="Announcements" value={stats?.announcements ?? "—"} tone="brand" />
-        <StatTile label="Open queries" value={stats?.open_queries ?? "—"} tone="deep" />
-        <StatTile label="Escalated to alumni" value={stats?.escalated_alumni ?? "—"} tone="gold" />
-        <StatTile label="Active clubs" value={stats?.clubs ?? "—"} tone="deep" />
-      </div>
+      <Stagger className="grid grid-cols-2 md:grid-cols-4 gap-4" delay={0.1}>
+        <Item><StatTile label="Announcements" value={stats?.announcements} tone="brand" go={() => setActive("announcements")} /></Item>
+        <Item><StatTile label="Open queries" value={stats?.open_queries} tone="deep" go={() => setActive("queries")} /></Item>
+        <Item><StatTile label="Escalated to alumni" value={stats?.escalated_alumni} tone="gold" go={() => setActive("queries")} /></Item>
+        <Item><StatTile label="Active clubs" value={stats?.clubs} tone="deep" go={() => setActive("clubs")} /></Item>
+      </Stagger>
 
       <div className="grid md:grid-cols-2 gap-6">
         <TactileCard>
@@ -71,7 +72,8 @@ export function Dashboard({ user, setActive }) {
                 </div>
               </div>
             ))}
-            {(!stats || (stats.recent_announcements || []).length === 0) && (
+            {!stats && <div className="space-y-3"><Skeleton className="h-10" /><Skeleton className="h-10" /></div>}
+            {stats && (stats.recent_announcements || []).length === 0 && (
               <div className="text-ink-3 text-sm italic">No pinned announcements yet.</div>
             )}
           </div>
@@ -89,7 +91,8 @@ export function Dashboard({ user, setActive }) {
                 <div className="text-ink">{q.query}</div>
               </div>
             ))}
-            {(!stats || (stats.recent_queries || []).length === 0) && (
+            {!stats && <div className="space-y-3"><Skeleton className="h-12" /><Skeleton className="h-12" /></div>}
+            {stats && (stats.recent_queries || []).length === 0 && (
               <div className="text-ink-3 text-sm italic">No queries yet — you can be first.</div>
             )}
           </div>
@@ -99,12 +102,22 @@ export function Dashboard({ user, setActive }) {
   );
 }
 
-export function StatTile({ label, value, tone }) {
+export function StatTile({ label, value, tone, go }) {
   const toneClass = { brand: "text-brand", deep: "text-brand-deep", gold: "text-brand-gold" }[tone];
-  return (
-    <div className="tactile-card !p-5">
+  const body = (
+    <>
       <div className="text-[10px] uppercase tracking-[0.22em] text-ink-3 font-semibold">{label}</div>
-      <div className={`font-serif text-4xl font-semibold mt-1 ${toneClass}`}>{value}</div>
-    </div>
+      <div className={`font-serif text-4xl font-semibold mt-1 ${toneClass}`}>
+        {value === undefined ? <Skeleton className="h-9 w-14 mt-1" /> : <CountUp value={value} />}
+      </div>
+    </>
+  );
+  if (!go) return <div className="tactile-card !p-5">{body}</div>;          // informational tile: no hover / click affordance
+  return (
+    <Lift>
+      <button type="button" onClick={go} className="tactile-card hoverable !p-5 w-full text-left cursor-pointer" aria-label={`${label}: open`}>
+        {body}
+      </button>
+    </Lift>
   );
 }

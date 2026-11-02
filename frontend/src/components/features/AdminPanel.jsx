@@ -8,12 +8,17 @@ const ROLES = ["Student", "CR", "DCR", "Senior", "Alumni", "Professor", "Convene
 
 export function AdminPanel({ setUser }) {
   const [users, setUsers] = useState([]);
+  const [q, setQ] = useState("");
+  const [onlyRequests, setOnlyRequests] = useState(false);
   const load = () =>
     axios
-      .get(`${API}/admin/users`)
+      .get(`${API}/admin/users`, { params: { q, requested: onlyRequests || undefined, limit: 200 } })
       .then((r) => setUsers(r.data))
       .catch(() => toast.error("Not authorised"));
-  useEffect(() => { load(); }, []);
+  useEffect(() => {                       // the user table holds thousands of people, so search runs on the server
+    const t = setTimeout(load, 250);
+    return () => clearTimeout(t);
+  }, [q, onlyRequests]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const changeRole = async (id, role) => {
     try {
@@ -33,6 +38,19 @@ export function AdminPanel({ setUser }) {
         title="Role & CR/DCR management"
         description="Promote students to Class Representative, Deputy CR, or lift them to Senior/Alumni after graduation."
       />
+      <div className="flex flex-wrap items-center gap-3">
+        <input
+          data-testid="admin-search"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search by name, email or roll number"
+          className="flex-1 min-w-[240px] bg-paper-card border border-edge-light rounded-xl px-4 py-2.5 text-sm outline-none focus:border-brand transition-colors"
+        />
+        <label className="flex items-center gap-2 text-xs text-ink-2 cursor-pointer">
+          <input type="checkbox" data-testid="admin-requests-only" checked={onlyRequests} onChange={(e) => setOnlyRequests(e.target.checked)} />
+          Only people requesting a role
+        </label>
+      </div>
       <TactileCard className="!p-0 overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-paper-sidebar text-[10px] uppercase tracking-widest text-ink-3 font-semibold">

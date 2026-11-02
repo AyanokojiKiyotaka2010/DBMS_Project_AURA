@@ -154,6 +154,10 @@ async def ensure_schema():
 
 
 async def _migrate():
+    # v6 -> v7: faculty accounts
+    if not await all("SHOW COLUMNS FROM faculty LIKE 'user_id'"):
+        await run("ALTER TABLE faculty ADD COLUMN user_id INT NULL")
+        await run("ALTER TABLE faculty ADD CONSTRAINT fk_faculty_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL")
     # v5 -> v6: club details, faculty links
     for col, ddl in [("leadership_note", "VARCHAR(1000)"), ("freshness", "VARCHAR(500)"), ("source_url", "VARCHAR(500)")]:
         if not await all(f"SHOW COLUMNS FROM clubs LIKE '{col}'"):

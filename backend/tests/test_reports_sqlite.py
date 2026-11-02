@@ -363,6 +363,29 @@ def test_faculty_import_and_safe_linking():
     assert c.all("SELECT count(*) n FROM club_people")[0]["n"] == 5
 
 
+def test_faculty_accounts_hod_admins_and_activation():
+    from importer.faculty import create_faculty_accounts, load_faculty
+    c = sqlite_db.install(db)
+    c.run("INSERT INTO departments (name) VALUES ('Computer Science and Engineering')")
+    c.run("INSERT INTO departments (name) VALUES ('Electronics & Communication Engineering')")
+    run(load_faculty([
+        {"department": "Computer Science and Engineering", "name": "Sankita J. Patel", "is_hod": True},
+        {"department": "Computer Science and Engineering", "name": "R. K. Roy"},
+        {"department": "Electronics Engineering", "name": "Shilpi Gupta", "is_hod": True},     # aliased to the ECE student department
+        {"department": "Physics", "name": "D. R. Roy", "is_hod": True}]))                       # no student department -> created
+    st = run(create_faculty_accounts())
+    assert st == {"accounts_new": 4, "hod_accounts": 3, "departments_created": 1}, st
+    assert run(create_faculty_accounts())["accounts_new"] == 0                                    # idempotent
+    rows = {r["name"]: (r["role"], r["department"], r["email"], r["email_verified"]) for r in c.all(
+        "SELECT u.name, u.role, d.name AS department, u.email, u.email_verified FROM users u JOIN departments d ON d.id=u.department_id")}
+    assert rows["Sankita J. Patel"][:2] == ("Administrator", "Computer Science and Engineering")  # H.O.D. = department-locked admin
+    assert rows["R. K. Roy"][:2] == ("Professor", "Computer Science and Engineering")
+    assert rows["Shilpi Gupta"][1] == "Electronics & Communication Engineering"
+    assert all(v[2].endswith("@import.invalid") and v[3] == 0 for v in rows.values())            # nobody can log in yet
+    admin = {"role": "Administrator", "department_id": 1, "year_id": None, "division_id": None}
+    assert rs.resolve_scope(admin, {})["department_id"] == 1                                 # the HOD is locked to their department
+
+
 if __name__ == "__main__":
     n = 0
     for name, fn in sorted(globals().items()):

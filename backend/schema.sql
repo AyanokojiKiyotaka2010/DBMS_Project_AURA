@@ -276,7 +276,9 @@ CREATE TABLE IF NOT EXISTS faculty (
   affiliation VARCHAR(300) NOT NULL DEFAULT '',
   note        VARCHAR(300) NOT NULL DEFAULT '',
   source_url  VARCHAR(500) NOT NULL DEFAULT '',
-  CONSTRAINT uq_faculty UNIQUE (department, name)
+  user_id     INT NULL,                                 -- the (placeholder or real) account for this person
+  CONSTRAINT uq_faculty UNIQUE (department, name),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Student leaders, faculty coordinators and published members of a club (names as published).

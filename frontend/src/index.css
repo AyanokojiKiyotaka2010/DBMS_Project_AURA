@@ -210,3 +210,13 @@ code,
         border-bottom-width: inherit;
     }
 }
+
+/* ---- Interaction polish (kept quiet on purpose) ---- */
+.tactile-card { transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease; }
+.tactile-card.hoverable:hover { transform: translateY(-3px); border-color: rgba(217, 93, 57, .35); box-shadow: 0 14px 30px -18px rgba(42, 71, 71, .45); }
+button, a { -webkit-tap-highlight-color: transparent; }
+:focus-visible { outline: 2px solid #D95D39; outline-offset: 2px; border-radius: 8px; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
+}

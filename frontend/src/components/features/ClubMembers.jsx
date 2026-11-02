@@ -3,6 +3,7 @@ import axios from "axios";
 import { toast } from "sonner";
 import { API } from "../../lib/campus";
 import { FileArrowDown, Trash } from "@phosphor-icons/react";
+import { motion } from "framer-motion";
 import { Btn, inputCls, errMsg } from "./shared";
 
 const ROLES = ["Member", "Core", "Co-Head", "Head"];
@@ -85,7 +86,7 @@ export function ClubMembership({ club, user, open, onChanged }) {
       {open && !allowed && <div className="mt-3 text-xs text-ink-3 italic">Members can see the club’s archive documents and member list. Request to join to get access.</div>}
 
       {open && allowed && (
-        <div className="mt-4 space-y-5" data-testid={`club-members-area-${club.id}`}>
+        <motion.div className="mt-4 space-y-5" data-testid={`club-members-area-${club.id}`} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
           {canManage && requests.length > 0 && (
             <div>
               <div className="text-[10px] uppercase tracking-[0.2em] font-semibold text-ink-3 mb-1.5">Requests to join</div>
@@ -150,7 +151,7 @@ export function ClubMembership({ club, user, open, onChanged }) {
               </div>
             )}
           </div>
-        </div>
+        </motion.div>
       )}
     </div>
   );

@@ -2,7 +2,7 @@
 
     pip install openpyxl
     python import_faculty.py "C:\\path\\SVNIT_Faculty_Directory_Departmentwise.xlsx" --dry-run
-    python import_faculty.py "C:\\path\\SVNIT_Faculty_Directory_Departmentwise.xlsx" --upload https://<backend>.onrender.com --email ADMIN --password PASS
+    python import_faculty.py "C:\\path\\SVNIT_Faculty_Directory_Departmentwise.xlsx" --upload https://<backend>.onrender.com --email ADMIN --password PASS [--create-accounts]
 
 Also links each club's faculty coordinators to their directory entry (by name, only when unambiguous). Safe to repeat.
 """
@@ -24,6 +24,8 @@ def main():
     ap.add_argument("--upload", metavar="URL")
     ap.add_argument("--email")
     ap.add_argument("--password")
+    ap.add_argument("--create-accounts", action="store_true",
+                    help="also create one placeholder account per faculty member (Heads of Department become department administrators)")
     a = ap.parse_args()
     items = parse_faculty(a.xlsx)
     print(f"{len(items)} faculty, {sum(1 for f in items if f['is_hod'])} heads of department, "
@@ -60,6 +62,9 @@ def main():
         total.update({k: v for k, v in res.items() if not k.startswith("faculty_")})     # linking totals are absolute
         print(f"sent {min(i + 100, len(items))}/{len(items)}")
     print("done:", total)
+    if a.create_accounts:
+        res = post("/api/admin/faculty/create-accounts", {})["stats"]
+        print("accounts:", res, "\n-> now open Academic Setup > Student placement > 'Staff to activate' and attach each person's real email.")
 
 
 if __name__ == "__main__":

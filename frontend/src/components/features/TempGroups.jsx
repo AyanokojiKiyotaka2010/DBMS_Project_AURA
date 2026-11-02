@@ -5,6 +5,8 @@ import { API } from "../../lib/campus";
 import { TactileCard, SectionHeading } from "../CampusUI";
 import { Timer, Paperclip, PaperPlaneTilt, DownloadSimple, UserCirclePlus } from "@phosphor-icons/react";
 import { Btn, inputCls, errMsg } from "./shared";
+import { motion } from "framer-motion";
+import { TimeRing } from "../motion";
 
 const MAX_FILE = 2 * 1024 * 1024;
 
@@ -98,7 +100,10 @@ export function TempGroups({ user }) {
               <button key={g.id} data-testid={`temp-group-${g.id}`} onClick={() => setSel(g.id)}
                 className={`w-full text-left p-3 rounded-xl border transition-all ${sel === g.id ? "bg-paper-card border-brand shadow-clay" : "bg-paper-card/60 border-edge-light hover:border-brand/50"}`}>
                 <div className="flex items-center justify-between gap-2">
-                  <div className="font-serif text-lg font-semibold text-ink truncate">{g.name}</div>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <TimeRing createdAt={g.created_at} expiresAt={g.expires_at} size={26} />
+                    <div className="font-serif text-lg font-semibold text-ink truncate">{g.name}</div>
+                  </div>
                   {g.pending_requests > 0 && <span className="text-[10px] font-semibold bg-brand text-paper rounded-full px-2 py-0.5">{g.pending_requests} request{g.pending_requests > 1 ? "s" : ""}</span>}
                 </div>
                 <div className={`text-[11px] mt-0.5 flex items-center gap-1 ${minutesLeft(g.expires_at) < 60 ? "text-brand font-semibold" : "text-ink-3"}`}>
@@ -213,10 +218,13 @@ function Chat({ group, user, reload, onGone }) {
   return (
     <TactileCard className="!p-0 overflow-hidden flex flex-col h-[640px]" data-testid="temp-chat">
       <div className="px-5 py-3 border-b border-edge-light flex flex-wrap items-center justify-between gap-2">
-        <div>
+        <div className="flex items-center gap-3">
+          <TimeRing createdAt={group.created_at} expiresAt={group.expires_at} />
+          <div>
           <div className="font-serif text-xl font-semibold text-ink">{group.name}</div>
           <div className={`text-[11px] flex items-center gap-1 ${soon ? "text-brand font-semibold" : "text-ink-3"}`}>
             <Timer size={11} weight="fill" /> {fmtLeft(group.expires_at)} · deleted automatically
+          </div>
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -267,7 +275,8 @@ function Chat({ group, user, reload, onGone }) {
         {msgs.map((m) => {
           const mine = m.user_id === user.user_id;
           return (
-            <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+            <motion.div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}
+              initial={{ opacity: 0, y: 8, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: 0.25 }}>
               <div className={`max-w-[80%] rounded-2xl px-3.5 py-2 text-sm ${mine ? "bg-brand text-paper" : "bg-paper-sidebar text-ink"}`}>
                 <div className={`text-[10px] font-semibold mb-0.5 ${mine ? "text-paper/80" : "text-brand-deep"}`}>
                   {mine ? "You" : m.user_name} · {new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
@@ -282,7 +291,7 @@ function Chat({ group, user, reload, onGone }) {
                   </button>
                 )}
               </div>
-            </div>
+            </motion.div>
           );
         })}
         <div ref={bottom} />

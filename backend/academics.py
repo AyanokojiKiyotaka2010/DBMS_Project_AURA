@@ -257,9 +257,9 @@ async def _validate_course_refs(dept_id, year_id, semester, professor_id):
     if semester is not None and not 1 <= semester <= 12:
         raise HTTPException(400, "semester must be between 1 and 12")
     if professor_id is not None:
-        p = await db.one("SELECT role FROM users WHERE id=%s", (professor_id,))
-        if not p or p["role"] != "Professor":
-            raise HTTPException(400, "professor_id must be a user with the Professor role")
+        p = await db.one("SELECT role, department_id FROM users WHERE id=%s", (professor_id,))
+        if not p or not (p["role"] == "Professor" or (p["role"] == "Administrator" and p["department_id"])):
+            raise HTTPException(400, "professor_id must be a Professor (or a Head of Department)")
 
 
 @router.post("/admin/courses")

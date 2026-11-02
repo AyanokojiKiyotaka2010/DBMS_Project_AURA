@@ -38,6 +38,7 @@ from common import (  # noqa: E402
     user_from_token, user_public, validate_attachments, verify_pw, year_id_by_label,
 )
 import mailer  # noqa: E402
+from importer.faculty import create_faculty_accounts  # noqa: E402
 from anon import author_proof, is_author  # noqa: E402
 from auth_codes import CodeError, check_code, issue_code  # noqa: E402
 import academics  # noqa: E402
@@ -860,10 +861,60 @@ async def respond_complaint(cid: int, inp: ComplaintRespond, user=Depends(get_us
 
 # ================================================================= Admin: users / roles
 @api.get("/admin/users")
-async def admin_list_users(user=Depends(get_user)):
+async def admin_list_users(q: str = "", roles: str = "", placeholder: bool = False, requested: bool = False, limit: int = 200, user=Depends(get_user)):
+    """Search people (the table holds thousands, so filtering happens in SQL):
+    q = part of name / email / roll no; roles = comma list; placeholder = only imported accounts nobody has claimed yet."""
     require_role(user, ["Administrator"])
-    rows = await db.all(USER_SQL + "ORDER BY u.created_at DESC, u.id DESC LIMIT 1000")
+    where, args = [], []
+    if q.strip():
+        like = f"%{q.strip().lower()}%"
+        where.append("(LOWER(u.name) LIKE %s OR LOWER(u.email) LIKE %s OR LOWER(COALESCE(u.roll_no,'')) LIKE %s)")
+        args += [like, like, like]
+    wanted = [r for r in roles.split(",") if r in ALLOWED_ROLES]
+    if wanted:
+        where.append(f"u.role IN ({','.join(['%s'] * len(wanted))})")
+        args += wanted
+    if placeholder:
+        where.append("u.email LIKE %s")
+        args.append("%@import.invalid")
+    if requested:                                   # people waiting for a role (Professor / CR / DCR / Convener)
+        where.append("u.requested_role IS NOT NULL")
+    sql = USER_SQL + ("WHERE " + " AND ".join(where) + " " if where else "") + "ORDER BY u.created_at DESC, u.id DESC LIMIT %s"
+    rows = await db.all(sql, tuple(args) + (max(1, min(limit, 1000)),))
     return [user_public(r) for r in rows]
+
+
+class AssignEmail(BaseModel):
+    email: EmailStr
+
+
+@api.post("/admin/users/{uid}/assign-email")
+async def admin_assign_email(uid: int, inp: AssignEmail, user=Depends(get_user)):
+    """Attach a real email to an imported (placeholder) account and send the person a code to set their password.
+    The administrator vouches for the address, so it counts as verified."""
+    require_role(user, ["Administrator"])
+    target = await fetch_user("u.id=%s", (uid,))
+    if not target:
+        raise HTTPException(404, "User not found")
+    if not target["email"].endswith("@import.invalid"):
+        raise HTTPException(400, "This account already has a real email")
+    email = inp.email.lower().strip()
+    if await db.one("SELECT id FROM users WHERE email=%s", (email,)):
+        raise HTTPException(400, "That email already belongs to another account")
+    await db.run("UPDATE users SET email=%s, email_verified=1 WHERE id=%s", (email, uid))
+    sent = await send_code(uid, target["name"], email, "reset")
+    out = {"ok": True, "email_sent": sent, "user": user_public(await fetch_user("u.id=%s", (uid,)))}
+    if not sent:
+        temp = uuid.uuid4().hex[:12]
+        await db.run("UPDATE users SET password_hash=%s WHERE id=%s", (hash_pw(temp), uid))
+        out["temporary_password"] = temp
+    return out
+
+
+@api.post("/admin/faculty/create-accounts")
+async def admin_create_faculty_accounts(user=Depends(get_user)):
+    require_role(user, ["Administrator"])
+    return {"ok": True, "stats": await create_faculty_accounts()}
 
 
 class StaffCreate(BaseModel):

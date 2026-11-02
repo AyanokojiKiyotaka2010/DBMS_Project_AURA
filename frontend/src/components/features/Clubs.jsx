@@ -6,6 +6,8 @@ import { TactileCard, SectionHeading } from "../CampusUI";
 import { Books, ArrowUpRight, Plus, Trash } from "@phosphor-icons/react";
 import { Field, Btn, inputCls, errMsg } from "./shared";
 import { ClubMembership } from "./ClubMembers";
+import { AnimatePresence, motion } from "framer-motion";
+import { Reveal } from "../motion";
 
 const EMPTY_PERSON = { person_name: "", title: "", person_type: "Student", academic_year: "" };
 const EMPTY = { name: "", category: "", description: "", cover: "", cells: "" };
@@ -186,8 +188,9 @@ export function Clubs({ user }) {
       )}
 
       <div className="grid md:grid-cols-2 gap-6">
-        {clubs.map((c) => (
-          <TactileCard key={c.id} className="!p-0 overflow-hidden" data-testid={`club-card-${c.id}`}>
+        {clubs.map((c, i) => (
+          <Reveal key={c.id} delay={(i % 2) * 0.06}>
+          <TactileCard className="hoverable !p-0 overflow-hidden h-full" data-testid={`club-card-${c.id}`}>
             <div className="relative h-40 bg-brand-deep">
               {c.cover && <img src={c.cover} alt={c.name} className="absolute inset-0 w-full h-full object-cover" />}
               <div className="absolute inset-0 bg-gradient-to-t from-brand-deep/80 via-brand-deep/20 to-transparent" />
@@ -235,8 +238,11 @@ export function Clubs({ user }) {
                 {expanded === c.id ? "Hide details" : `Team, members & archive${(c.people || []).length ? ` (${c.people.length})` : ""}`}
                 <ArrowUpRight size={12} />
               </button>
+              <AnimatePresence initial={false}>
               {expanded === c.id && (
-                <div className="mt-4 space-y-3">
+                <motion.div key="open" className="mt-4 space-y-3 overflow-hidden"
+                  initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}>
                   {["Student", "Faculty"].map((kind) => {
                     const list = (c.people || []).filter((p) => p.type === kind);
                     if (!list.length) return null;
@@ -290,10 +296,12 @@ export function Clubs({ user }) {
                       <Btn variant="ghost" type="button" onClick={() => addYear(c)}>Save</Btn>
                     </div>
                   )}
-                </div>
+                </motion.div>
               )}
+              </AnimatePresence>
             </div>
           </TactileCard>
+          </Reveal>
         ))}
       </div>
     </div>

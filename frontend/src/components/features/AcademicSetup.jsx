@@ -119,7 +119,7 @@ function CoursesTab({ structure }) {
 
   const load = useCallback(() => {
     axios.get(`${API}/courses`).then((r) => setCourses(r.data)).catch(() => {});
-    axios.get(`${API}/admin/users`).then((r) => setProfs(r.data.filter((u) => u.role === "Professor"))).catch(() => {});
+    axios.get(`${API}/admin/users`, { params: { roles: "Professor,Administrator", limit: 1000 } }).then((r) => setProfs(r.data.filter((u) => u.role === "Professor" || (u.role === "Administrator" && u.department_id)))).catch(() => {});
   }, []);
   useEffect(() => { load(); }, [load]);
 
@@ -215,21 +215,60 @@ function AddAccount({ structure, onDone }) {
   );
 }
 
+function StaffActivation({ onDone }) {
+  const [rows, setRows] = useState([]);
+  const [filter, setFilter] = useState("");
+  const [emails, setEmails] = useState({});
+  const [busy, setBusy] = useState(null);
+  const load = useCallback(() => axios.get(`${API}/admin/users`, { params: { placeholder: true, roles: "Administrator,Professor", limit: 400 } }).then((r) => setRows(r.data)).catch(() => {}), []);
+  useEffect(() => { load(); }, [load]);
+  const shown = rows.filter((u) => `${u.name} ${u.department}`.toLowerCase().includes(filter.toLowerCase())).slice(0, 25);
+  const invite = async (u) => {
+    const email = (emails[u.user_id] || "").trim();
+    if (!email) return toast.error("Type their real email first");
+    setBusy(u.user_id);
+    try {
+      const r = await axios.post(`${API}/admin/users/${u.user_id}/assign-email`, { email });
+      toast.success(r.data.email_sent ? `Invite sent to ${email}` : `No mail provider — one-time password: ${r.data.temporary_password}`, { duration: r.data.email_sent ? 4000 : 20000 });
+      setRows((p) => p.filter((x) => x.user_id !== u.user_id)); onDone && onDone();
+    } catch (e) { toast.error(errMsg(e)); } finally { setBusy(null); }
+  };
+  if (!rows.length) return null;
+  return (
+    <div className="mb-6 pb-6 border-b border-edge-light" data-testid="staff-activation">
+      <h3 className="font-serif text-lg font-semibold mb-1">Staff to activate ({rows.length})</h3>
+      <p className="text-xs text-ink-3 mb-3">Faculty accounts imported from the directory have no login yet. Type a person’s real email and send the invite — they set their own password with the emailed code. Heads of Department were created as department administrators.</p>
+      <input className={inputCls + " mb-3"} placeholder="Find by name or department" value={filter} onChange={(e) => setFilter(e.target.value)} data-testid="staff-filter" />
+      <div className="space-y-2">
+        {shown.map((u) => (
+          <div key={u.user_id} className="flex flex-wrap items-center gap-2 text-sm" data-testid={`staff-row-${u.user_id}`}>
+            <div className="min-w-[220px] flex-1"><b>{u.name}</b> <span className="text-xs text-ink-3">{u.role === "Administrator" ? "Head of Department" : "Professor"} · {u.department}</span></div>
+            <input type="email" className={inputCls + " !w-64"} placeholder="their real email" value={emails[u.user_id] || ""} onChange={(e) => setEmails((p) => ({ ...p, [u.user_id]: e.target.value }))} />
+            <Btn disabled={busy === u.user_id} onClick={() => invite(u)}>{busy === u.user_id ? "Sending…" : "Send invite"}</Btn>
+          </div>
+        ))}
+        {rows.length > shown.length && <div className="text-xs text-ink-3">Showing {shown.length} of {rows.length} — use the search to narrow down.</div>}
+      </div>
+    </div>
+  );
+}
+
 function PeopleTab({ structure }) {
   const [users, setUsers] = useState([]);
   const [q, setQ] = useState("");
-  const load = useCallback(() => axios.get(`${API}/admin/users`).then((r) => setUsers(r.data)).catch(() => {}), []);
-  useEffect(() => { load(); }, [load]);
+  const load = useCallback(() => axios.get(`${API}/admin/users`, { params: { q, limit: 100 } }).then((r) => setUsers(r.data)).catch(() => {}), [q]);
+  useEffect(() => { const t = setTimeout(load, 250); return () => clearTimeout(t); }, [load]);     // search runs on the server
 
   const save = async (u, patch) => {
     try { await axios.put(`${API}/admin/users/${u.user_id}/assignment`, patch); load(); toast.success("Saved"); }
     catch (e) { toast.error(errMsg(e)); }
   };
-  const shown = users.filter((u) => `${u.name} ${u.email} ${u.roll_no}`.toLowerCase().includes(q.toLowerCase())).slice(0, 100);
+  const shown = users;
   const sel = "bg-transparent text-xs outline-none max-w-[9rem]";
   const val = (v) => (v === null || v === undefined ? "" : v);
   return (
     <TactileCard>
+      <StaffActivation onDone={load} />
       <AddAccount structure={structure} onDone={load} />
       <input data-testid="people-search" className={inputCls + " mb-4"} placeholder="Search name, email or roll no." value={q} onChange={(e) => setQ(e.target.value)} />
       <div className="overflow-x-auto">

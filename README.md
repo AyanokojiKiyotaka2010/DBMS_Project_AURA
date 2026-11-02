@@ -130,3 +130,17 @@ Order does not matter and both are safe to repeat. Club faculty coordinators are
 office extension, HOD flag) only when the name matches exactly one person; ambiguous names stay unlinked rather than risk
 showing someone else's number. The source workbooks contain no personal phone numbers or emails, so none are shown.
 Join requests for clubs appear in an inbox at the top of the Clubs page for Administrators, Conveners, Professors and club Heads.
+
+## Faculty accounts (Heads of Department as admins)
+```bash
+python import_faculty.py "C:\path\SVNIT_Faculty_Directory_Departmentwise.xlsx" --upload https://<backend>.onrender.com --email ADMIN --password PASS --create-accounts
+```
+Creates one account per faculty member: each Head of Department becomes an **Administrator locked to their department**, everyone
+else a **Professor** (departments that have no students, e.g. Physics, are created). The accounts cannot log in yet: open
+**Academic Setup -> Student placement -> Staff to activate**, type each person's real email and press *Send invite*; they set their
+own password with the emailed code. Courses can be assigned to Professors and to Heads of Department.
+
+## Interface
+Page transitions, a sliding navigation highlight, animated counters, skeleton loaders, report charts and animated meters, smooth
+club cards, countdown rings on temporary groups, and a **Ctrl/Cmd + K** quick-jump palette. All motion switches off for visitors who
+prefer reduced motion. Built with the `framer-motion` and `recharts` packages already in the project.
